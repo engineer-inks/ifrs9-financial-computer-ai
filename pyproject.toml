@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ifrs9-financial-computer-ai"
+version = "0.1.0"
+description = "Advanced Credit Risk Modeling Framework for IFRS9 using Physics-informed ML and Deep Learning"
+readme = "README.md"
+authors = [
+    { name = "Eneas Jr.", email = "eneas.rodrigues25@gmail.com" }
+]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    # Core Data & Math
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "scipy>=1.10.0",
+    
+    # Machine Learning & Algoritmos
+    "scikit-learn>=1.3.0",
+    "catboost>=1.2.0",
+    
+    # Deep Learning (PyTorch)
+    "torch>=2.1.0",
+    "pytorch-tabnet>=4.1.0",
+    
+    # Otimização Bayesiana
+    "optuna>=3.4.0",
+    
+    # MLOps & Versionamento de Modelos
+    "mlflow>=2.8.0",
+    
+    # Calibração e Estatística Avançada
+    "betacal>=0.1.0",
+    "statsmodels>=0.14.0", # Essencial para testes de Granger
+    
+    # Visualização de Dados e XAI
+    "matplotlib>=3.8.0",
+    "seaborn>=0.13.0",
+    "shap>=0.43.0",
+    
+    # Ecossistema de Desenvolvimento
+    "jupyterlab>=4.0.0",
+    "ipywidgets>=8.1.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "black>=23.9.1",
+    "flake8>=6.1.0",
+    "isort>=5.12.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ifrs9_framework*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
