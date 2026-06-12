@@ -1,0 +1,2 @@
+docker exec -it ifrs9-dev-env python /workspace/src/ifrs9_framework/data/synthetic_generator.py
+docker logs ifrs9-dev-env

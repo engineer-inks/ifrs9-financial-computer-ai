@@ -220,3 +220,4 @@ __marimo__/
 # Ignorar dados locais
 data/
 !data/.gitkeep
+.Trash-0/
