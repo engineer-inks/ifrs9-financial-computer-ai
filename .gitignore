@@ -219,6 +219,7 @@ __marimo__/
 
 # Ignorar dados locais
 data/processed/
-data/raw
+data/raw/
+
 !data/.gitkeep
 .Trash-0/
