@@ -6,21 +6,15 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: ifrs9-dev-env
-    # Mapeia a pasta atual (onde está o código) para /workspace dentro do contêiner
     volumes:
       - .:/workspace
     ports:
       - "8888:8888" # JupyterLab
       - "5000:5000" # MLflow UI
-    # Configuração crítica para ativar a GPU no Docker via WSL2
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    # Inicia o JupyterLab e o servidor do MLflow em background quando o contêiner subir
+    environment:
+      # Passamos a variável do .env para dentro do Python (Pipeline Orchestrator)
+      - USE_GPU=${USE_GPU:-False}
+    # Inicia o JupyterLab e o servidor do MLflow em background
     command: >
       bash -c "jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.token='' --ServerApp.password='' &
                mlflow server --host 0.0.0.0 --port 5000"

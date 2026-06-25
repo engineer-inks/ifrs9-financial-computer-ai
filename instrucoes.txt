@@ -1,2 +1,8 @@
 docker exec -it ifrs9-dev-env python /workspace/src/ifrs9_framework/data/synthetic_generator.py
 docker logs ifrs9-dev-env
+docker compose build
+docker compose up -d --build
+
+docker compose --env-file src/ifrs9_framework/config/.env up -d --build
+
+http://localhost:8888/lab

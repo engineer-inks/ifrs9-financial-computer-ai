@@ -1,0 +1,13 @@
+version: '3.8'
+
+# Este ficheiro NÃO roda sozinho. Ele serve apenas para injetar 
+# o bloco da NVIDIA no serviço "dev-env" do docker-compose.yml base.
+services:
+  dev-env:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

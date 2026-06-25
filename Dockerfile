@@ -16,8 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Configura o diretório de trabalho dentro do contêiner
 WORKDIR /workspace
 
+COPY requirements.txt .
 # Atualiza o pip
 RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
 
 # Copia os arquivos de configuração do pacote primeiro (aproveita o cache do Docker)
 COPY pyproject.toml README.md ./
