@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLOps Results & Audit Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; }
+    </style>
+</head>
+<body class="h-screen w-screen flex text-slate-800 overflow-hidden">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col z-20 shadow-2xl">
+        <div class="p-6 border-b border-slate-800 flex items-center space-x-3">
+            <div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            </div>
+            <h1 class="font-bold text-lg text-white">Model Audit</h1>
+        </div>
+        <nav class="flex-1 py-6 space-y-2 px-4">
+            <a href="#" onclick="switchTab('global')" id="nav-global" class="flex items-center space-x-3 px-4 py-3 bg-blue-600 text-white rounded-lg transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                <span class="font-medium">Performance Global</span>
+            </a>
+            <a href="#" onclick="switchTab('shap')" id="nav-shap" class="flex items-center space-x-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                <span class="font-medium">Feature Importance</span>
+            </a>
+            <a href="#" onclick="switchTab('backtest')" id="nav-backtest" class="flex items-center space-x-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                <span class="font-medium">Backtesting (OOT)</span>
+            </a>
+        </nav>
+        <div class="p-6 border-t border-slate-800">
+            <div class="bg-slate-800 p-4 rounded-lg text-xs">
+                <p class="text-slate-400 mb-1">Última Execução:</p>
+                <p class="text-green-400 font-mono font-bold" id="last-run-time">Carregando...</p>
+                <p class="text-slate-400 mt-2">Modelo:</p>
+                <p class="text-white font-mono" id="model-name">CatBoost V1.1</p>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto bg-slate-50 p-8 relative">
+        
+        <div class="flex justify-between items-end mb-6">
+            <div>
+                <h2 class="text-3xl font-bold text-slate-800" id="page-title">Painel de Auditoria de Risco</h2>
+                <p class="text-slate-500 mt-1" id="page-subtitle">Métricas calculadas sobre a base de Validação.</p>
+            </div>
+            <button onclick="fetchMetrics()" class="px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 text-sm font-semibold rounded shadow-sm flex items-center space-x-2 transition-colors">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                <span>Sincronizar Métricas</span>
+            </button>
+        </div>
+
+        <!-- TAB 1: PERFORMANCE GLOBAL -->
+        <div id="tab-global" class="max-w-6xl mx-auto space-y-6 block">
+            <!-- Top KPIs -->
+            <div class="grid grid-cols-4 gap-4">
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-blue-500">
+                    <p class="text-xs font-semibold text-slate-500 uppercase">KS Statistic</p>
+                    <h3 class="text-3xl font-bold text-slate-800 mt-1" id="kpi-ks">--%</h3>
+                    <p class="text-xs text-green-600 mt-2 font-medium">↑ Excelente Separação</p>
+                </div>
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-indigo-500">
+                    <p class="text-xs font-semibold text-slate-500 uppercase">ROC AUC</p>
+                    <h3 class="text-3xl font-bold text-slate-800 mt-1" id="kpi-auc">--</h3>
+                    <p class="text-xs text-slate-500 mt-2">Poder de discriminação global</p>
+                </div>
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-purple-500">
+                    <p class="text-xs font-semibold text-slate-500 uppercase">F1-Score (Fraude)</p>
+                    <h3 class="text-3xl font-bold text-slate-800 mt-1" id="kpi-f1">--</h3>
+                    <p class="text-xs text-slate-500 mt-2">Equilíbrio comercial</p>
+                </div>
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-green-500">
+                    <p class="text-xs font-semibold text-slate-500 uppercase">Falsos Positivos Evitados</p>
+                    <h3 class="text-3xl font-bold text-green-600 mt-1" id="kpi-saved">--</h3>
+                    <p class="text-xs text-slate-500 mt-2">Bons clientes aprovados</p>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="grid grid-cols-2 gap-6">
+                <!-- ROC Curve -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="font-semibold text-slate-800 border-b pb-3 mb-4">Curva ROC (Receiver Operating Characteristic)</h3>
+                    <div class="flex-1 relative min-h-[300px]">
+                        <canvas id="rocChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Confusion Matrix -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                    <div class="flex justify-between items-center border-b pb-3 mb-4">
+                        <h3 class="font-semibold text-slate-800">Matriz de Confusão Comercial</h3>
+                        <span class="text-xs bg-slate-100 px-2 py-1 rounded text-slate-600 border" id="cutoff-display">Cut-off: 4.0%</span>
+                    </div>
+                    
+                    <div class="flex-1 flex items-center justify-center bg-slate-50 rounded-lg p-4">
+                        <div class="grid grid-cols-3 gap-2 w-full text-center text-sm">
+                            <div></div>
+                            <div class="font-semibold text-slate-600">Aprovado (0)</div>
+                            <div class="font-semibold text-slate-600">Negado (1)</div>
+                            
+                            <div class="font-semibold text-slate-600 flex items-center justify-end pr-4">Bom Pagador (0)</div>
+                            <div class="bg-blue-100 text-blue-900 border border-blue-200 p-4 rounded-lg flex flex-col justify-center shadow-inner">
+                                <span class="text-xs opacity-70 mb-1">Verdadeiro Negativo</span>
+                                <span class="text-2xl font-bold" id="cm-tn">--</span>
+                            </div>
+                            <div class="bg-red-50 text-red-900 border border-red-100 p-4 rounded-lg flex flex-col justify-center shadow-inner">
+                                <span class="text-xs opacity-70 mb-1">Falso Positivo (Perda)</span>
+                                <span class="text-2xl font-bold text-red-600" id="cm-fp">--</span>
+                            </div>
+
+                            <div class="font-semibold text-slate-600 flex items-center justify-end pr-4">Inadimplente (1)</div>
+                            <div class="bg-orange-50 text-orange-900 border border-orange-100 p-4 rounded-lg flex flex-col justify-center shadow-inner">
+                                <span class="text-xs opacity-70 mb-1">Falso Negativo (Calote)</span>
+                                <span class="text-2xl font-bold text-orange-600" id="cm-fn">--</span>
+                            </div>
+                            <div class="bg-purple-100 text-purple-900 border border-purple-200 p-4 rounded-lg flex flex-col justify-center shadow-inner">
+                                <span class="text-xs opacity-70 mb-1">Verdadeiro Positivo</span>
+                                <span class="text-2xl font-bold" id="cm-tp">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: FEATURE IMPORTANCE (SHAP) -->
+        <div id="tab-shap" class="max-w-6xl mx-auto space-y-6 hidden">
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                <div class="mb-4">
+                    <h3 class="font-semibold text-slate-800 text-lg">SHAP Values (Impacto no Modelo)</h3>
+                    <p class="text-sm text-slate-500">Avalia a contribuição marginal de cada feature para aumentar ou diminuir a probabilidade de default.</p>
+                </div>
+                <div class="flex-1 relative min-h-[500px]">
+                    <canvas id="shapChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: BACKTESTING -->
+        <div id="tab-backtest" class="max-w-6xl mx-auto space-y-6 hidden">
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                <div class="mb-4">
+                    <h3 class="font-semibold text-slate-800 text-lg">Estabilidade do Modelo ao Longo do Tempo (OOT)</h3>
+                    <p class="text-sm text-slate-500">Monitoramento da degradação das métricas KS e AUC em safras futuras (Concept Drift).</p>
+                </div>
+                <div class="flex-1 relative min-h-[400px]">
+                    <canvas id="backtestChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // Lógica de Abas
+        function switchTab(tab) {
+            document.getElementById('tab-global').style.display = tab === 'global' ? 'block' : 'none';
+            document.getElementById('tab-shap').style.display = tab === 'shap' ? 'block' : 'none';
+            document.getElementById('tab-backtest').style.display = tab === 'backtest' ? 'block' : 'none';
+            
+            const activeClass = 'flex items-center space-x-3 px-4 py-3 bg-blue-600 text-white rounded-lg transition-colors';
+            const inactiveClass = 'flex items-center space-x-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors';
+            
+            document.getElementById('nav-global').className = tab === 'global' ? activeClass : inactiveClass;
+            document.getElementById('nav-shap').className = tab === 'shap' ? activeClass : inactiveClass;
+            document.getElementById('nav-backtest').className = tab === 'backtest' ? activeClass : inactiveClass;
+
+            const titles = {
+                'global': { title: 'Painel de Auditoria de Risco', sub: 'Métricas calculadas sobre a base de Validação.' },
+                'shap': { title: 'Explicabilidade do Modelo', sub: 'Auditoria de caixa-branca via SHAP.' },
+                'backtest': { title: 'Validação Out-of-Time', sub: 'Testes de estabilidade em safras recentes.' }
+            };
+
+            document.getElementById('page-title').innerText = titles[tab].title;
+            document.getElementById('page-subtitle').innerText = titles[tab].sub;
+        }
+
+        // --- Gráficos e Mock Data ---
+        let rocChartInst = null;
+        let shapChartInst = null;
+        let backtestChartInst = null;
+
+        // Mock expansivo para incluir o Backtest
+        const mockData = {
+            timestamp: new Date().toLocaleString(),
+            kpis: { ks: 54.2, auc: 0.89, f1: 0.62, saved: 3443 },
+            confusion_matrix: { tn: 63921, fp: 9708, fn: 679, tp: 590 },
+            roc_curve: {
+                fpr: [0, 0.05, 0.1, 0.2, 0.5, 1],
+                tpr: [0, 0.4, 0.65, 0.85, 0.95, 1]
+            },
+            feature_importance: {
+                features: ["anomalia_multivariada", "ratio_financiamento_renda", "bureau_score", "prazo_meses", "selic_contratacao", "idade", "tipo_produto"],
+                scores: [25.4, 18.2, 15.1, 8.5, 5.2, 4.1, 3.0]
+            },
+            backtest: {
+                cohorts: ["Jan/25", "Fev/25", "Mar/25", "Abr/25", "Mai/25", "Jun/25"],
+                ks_trend: [55.1, 54.8, 54.2, 53.5, 52.9, 52.1], // Leve degradação natural
+                auc_trend: [0.90, 0.89, 0.89, 0.88, 0.87, 0.87]
+            }
+        };
+
+        function updateUI(data) {
+            // Atualiza KPIs e Matriz
+            document.getElementById('last-run-time').innerText = data.timestamp;
+            document.getElementById('kpi-ks').innerText = `${data.kpis.ks.toFixed(1)}%`;
+            document.getElementById('kpi-auc').innerText = data.kpis.auc.toFixed(3);
+            document.getElementById('kpi-f1').innerText = data.kpis.f1.toFixed(2);
+            document.getElementById('kpi-saved').innerText = `+${data.kpis.saved}`;
+            
+            document.getElementById('cm-tn').innerText = data.confusion_matrix.tn.toLocaleString();
+            document.getElementById('cm-fp').innerText = data.confusion_matrix.fp.toLocaleString();
+            document.getElementById('cm-fn').innerText = data.confusion_matrix.fn.toLocaleString();
+            document.getElementById('cm-tp').innerText = data.confusion_matrix.tp.toLocaleString();
+
+            // 1. ROC Curve
+            if(rocChartInst) rocChartInst.destroy();
+            const ctxRoc = document.getElementById('rocChart').getContext('2d');
+            rocChartInst = new Chart(ctxRoc, {
+                type: 'line',
+                data: {
+                    labels: data.roc_curve.fpr,
+                    datasets: [{
+                        label: 'Curva ROC', data: data.roc_curve.tpr,
+                        borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)', borderWidth: 3, fill: true, tension: 0.4
+                    }, {
+                        label: 'Random', data: data.roc_curve.fpr,
+                        borderColor: '#cbd5e1', borderDash: [5, 5], borderWidth: 2, pointRadius: 0
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'linear', min: 0, max: 1 }, y: { min: 0, max: 1 } } }
+            });
+
+            // 2. SHAP Chart
+            if(shapChartInst) shapChartInst.destroy();
+            const ctxShap = document.getElementById('shapChart').getContext('2d');
+            shapChartInst = new Chart(ctxShap, {
+                type: 'bar',
+                data: {
+                    labels: data.feature_importance.features,
+                    datasets: [{
+                        label: 'Importância Média SHAP (|SHAP value|)',
+                        data: data.feature_importance.scores,
+                        backgroundColor: '#f43f5e', borderRadius: 4
+                    }]
+                },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, scales: { x: { beginAtZero: true } } }
+            });
+
+            // 3. Backtest Chart
+            if(backtestChartInst) backtestChartInst.destroy();
+            const ctxBacktest = document.getElementById('backtestChart').getContext('2d');
+            backtestChartInst = new Chart(ctxBacktest, {
+                type: 'line',
+                data: {
+                    labels: data.backtest.cohorts,
+                    datasets: [
+                        {
+                            label: 'KS Statistic (%)',
+                            data: data.backtest.ks_trend,
+                            borderColor: '#3b82f6', backgroundColor: '#3b82f6',
+                            borderWidth: 3, tension: 0.3,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'ROC AUC',
+                            data: data.backtest.auc_trend,
+                            borderColor: '#8b5cf6', backgroundColor: '#8b5cf6',
+                            borderWidth: 3, borderDash: [5, 5], tension: 0.3,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { type: 'linear', position: 'left', min: 40, max: 70, title: { display: true, text: 'Estatística KS (%)' } },
+                        y1: { type: 'linear', position: 'right', min: 0.7, max: 1.0, title: { display: true, text: 'AUC Score' }, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        async function fetchMetrics() {
+            // Em breve: const response = await fetch('http://localhost:8000/api/metrics');
+            updateUI(mockData);
+        }
+
+        window.onload = fetchMetrics;
+    </script>
+</body>
+</html>
