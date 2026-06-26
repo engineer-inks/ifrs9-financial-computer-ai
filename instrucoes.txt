@@ -26,7 +26,12 @@ Aí sim, você digita o comando do uvicorn.
 docker compose --env-file src/ifrs9_framework/config/.env build --no-cache
 docker compose --env-file src/ifrs9_framework/config/.env up -d
 
+## no mac
+docker compose --env-file src/ifrs9_framework/config/.env up -d --build
 
 pip install fastapi uvicorn pyyaml
 docker exec -it ifrs9-dev-env bash
 uvicorn src.ifrs9_framework.api:app --host 0.0.0.0 --port 8000 --reload
+
+http://localhost:8000/docs
+

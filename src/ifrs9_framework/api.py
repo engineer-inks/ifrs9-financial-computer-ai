@@ -32,7 +32,7 @@ class PipelineConfig(BaseModel):
     auto_tune: bool
 
 # Caminho onde vamos salvar o arquivo YAML
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "../config/config.yaml")
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "../ifrs9_framework/config/config.yaml")
 
 @app.post("/api/save-config")
 async def save_config(config_data: PipelineConfig):
