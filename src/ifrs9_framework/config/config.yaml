@@ -1,0 +1,63 @@
+# ==========================================
+# IFRS9 CREDIT ORIGINATION PIPELINE
+# ==========================================
+pipeline_name: "ifrs9_credit_origination"
+version: "1.1.0"
+environment: "development"
+
+data_paths:
+  raw_data: "../src/ifrs9_framework/data/raw/synthetic_credit_data.parquet"
+  processed_data: "../src/ifrs9_framework/data/processed/data_curada.parquet"
+  model_output: "../src/ifrs9_framework/models/"
+
+# A "Receita" do Cientista de Dados
+recipe:
+  target: "default_flag"
+  
+  features:
+    numeric:
+      - "idade"
+      - "renda"
+      - "bureau_score"
+      - "prazo_meses"
+      - "limite_credito"
+      - "valor_financiado"
+      - "selic_contratacao"
+    categorical:
+      - "uf"
+      - "tipo_produto"
+      
+  # Configurações Específicas de Engenharia
+  engineering:
+    apply_yeo_johnson_to:
+      - "renda"
+      - "limite_credito"
+      - "valor_financiado"
+    mahalanobis_radar:
+      - "idade"
+      - "bureau_score"
+      - "renda_yj"
+      - "limite_credito_yj"
+      - "valor_financiado_yj"
+
+model_training:
+  algorithm: "catboost" # Opções: catboost, lightgbm
+  validation_strategy: "out_of_time"
+  train_size_ratio: 0.8
+  business_cutoff_pd: 0.04
+  
+  hyperparameter_tuning:
+    auto_tune: true
+    engine: "optuna"
+    n_trials: 20
+    metric_to_optimize: "pr_auc"
+    
+    search_space:
+      depth: [4, 8]
+      learning_rate: [0.01, 0.1]
+      scale_pos_weight: [1.0, 15.0]
+      l2_leaf_reg: [1.0, 10.0]
+      
+  static_params:
+    iterations: 500
+    scale_pos_weight: 10

@@ -9,6 +9,8 @@ import os
 # from src.feature_engineering import apply_yeo_johnson, detect_anomalies
 # from src.model_training import train_model_with_optuna, train_static_model
 # from src.evaluation import evaluate_and_calibrate
+from src.features.feature_builder import FeatureEngineer
+from src.visualization.model_dashboard import ModelVisualizer
 
 # Configuração de Logs (O que vai alimentar a nossa interface HTML no futuro)
 logging.basicConfig(
@@ -63,8 +65,9 @@ class CreditRiskPipeline:
 
     def step_2_feature_engineering(self):
         logging.info(">>> PASSO 2: Engenharia de Features")
-        criticas = self.config['features']['critical_for_yeo_johnson']
-        logging.info(f"Aplicando Yeo-Johnson nas colunas: {criticas}")
+        engineer = FeatureEngineer(self.df)
+        self.df = engineer.pipeline_completa(self.config['features'])
+        logging.info(f"Aplicando Yeo-Johnson nas colunas: {self.df.columns}")
         # self.df = apply_yeo_johnson(self.df, criticas)
         
         radar = self.config['features']['radar_mahalanobis']
