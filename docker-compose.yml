@@ -11,6 +11,7 @@ services:
     ports:
       - "8888:8888" # JupyterLab
       - "5000:5000" # MLflow UI
+      - "8000:8000" # MLOps FastAPI
     environment:
       # Passamos a variável do .env para dentro do Python (Pipeline Orchestrator)
       - USE_GPU=${USE_GPU:-False}

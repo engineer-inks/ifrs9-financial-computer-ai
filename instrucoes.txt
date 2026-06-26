@@ -6,3 +6,27 @@ docker compose up -d --build
 docker compose --env-file src/ifrs9_framework/config/.env up -d --build
 
 http://localhost:8888/lab
+
+
+
+uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
+4. Agora abra o arquivo `ui/config_ui.html` no seu navegador web duplo-clique.
+
+2. Rodar o Uvicorn DENTRO do Contêiner:
+Para subir a API, você não pode rodar o comando no terminal do Windows. Você tem duas formas fáceis de fazer isso:
+
+Opção A (Mais visual): Acesse o seu JupyterLab no navegador (localhost:8888), clique no ícone azul com um >_ escrito "Terminal" (isso abrirá um terminal já lá dentro do Docker). Nesse terminal, cole o comando:
+uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
+
+Opção B (Pelo Git Bash): Se preferir continuar no terminal escuro, entre "dentro" do contêiner primeiro usando:
+docker exec -it ifrs9-dev-env bash
+(O seu terminal vai mudar para root@...:/workspace#).
+Aí sim, você digita o comando do uvicorn.
+
+docker compose --env-file src/ifrs9_framework/config/.env build --no-cache
+docker compose --env-file src/ifrs9_framework/config/.env up -d
+
+
+pip install fastapi uvicorn pyyaml
+docker exec -it ifrs9-dev-env bash
+uvicorn src.ifrs9_framework.api:app --host 0.0.0.0 --port 8000 --reload
