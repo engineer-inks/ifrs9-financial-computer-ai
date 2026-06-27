@@ -21,7 +21,7 @@ recipe:
     - limite_credito
     - valor_financiado
 model_training:
-  algorithm: catboost
+  algorithm: lightgbm
   hyperparameter_tuning:
     auto_tune: true
     engine: optuna

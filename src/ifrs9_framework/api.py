@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import yaml
 import subprocess
 import os
+import json
 import logging
 
 # Configuração simples de log
@@ -12,16 +13,15 @@ logger = logging.getLogger("MLOps-API")
 
 app = FastAPI(title="IFRS9 MLOps API")
 
-# Configurando CORS para permitir que o HTML (mesmo aberto direto no navegador) consiga falar com a API
+# Configurando CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Em produção, limitamos isso para o domínio correto
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Definindo a estrutura que esperamos receber do Frontend (HTML)
 class PipelineConfig(BaseModel):
     pipeline_name: str
     target: str
@@ -31,14 +31,28 @@ class PipelineConfig(BaseModel):
     algorithm: str
     auto_tune: bool
 
-# Caminho onde vamos salvar o arquivo YAML
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "../ifrs9_framework/config/config.yaml")
+# Caminhos baseados na pasta src/ifrs9_framework
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config/config.yaml")
+METRICS_PATH = os.path.join(os.path.dirname(__file__), "config/metrics.json")
+
+@app.get("/api/metrics")
+async def get_metrics():
+    """Lê as métricas reais geradas pelo modelo em Python e as envia para o Dashboard HTML."""
+    try:
+        if os.path.exists(METRICS_PATH):
+            with open(METRICS_PATH, 'r') as f:
+                data = json.load(f)
+            return data
+        else:
+            raise HTTPException(status_code=404, detail="Métricas ainda não geradas. Inicie um treinamento primeiro.")
+    except Exception as e:
+        logger.error(f"Erro ao ler métricas: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/save-config")
 async def save_config(config_data: PipelineConfig):
     """Recebe as configurações da interface Web e escreve o arquivo config.yaml no disco."""
     try:
-        # Montando a estrutura exata que o nosso pipeline_orchestrator espera
         yaml_structure = {
             "pipeline_name": config_data.pipeline_name,
             "version": "1.1.0",
@@ -62,10 +76,8 @@ async def save_config(config_data: PipelineConfig):
             }
         }
         
-        # Garantindo que a pasta config existe
         os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
         
-        # Salvando no disco
         with open(CONFIG_PATH, 'w') as file:
             yaml.dump(yaml_structure, file, default_flow_style=False, sort_keys=False)
             
@@ -77,10 +89,9 @@ async def save_config(config_data: PipelineConfig):
         raise HTTPException(status_code=500, detail=str(e))
 
 def run_pipeline_script():
-    """Função que roda o orquestrador em background (segundo plano)"""
-    script_path = os.path.join(os.path.dirname(__file__), "../pipeline_orchestrator.py")
+    """Função que roda o orquestrador em background"""
+    script_path = os.path.join(os.path.dirname(__file__), "pipeline_orchestrator.py")
     logger.info("Iniciando treinamento do modelo em background...")
-    # Executa o script Python do nosso orquestrador
     subprocess.run(["python", script_path])
 
 @app.post("/api/run-pipeline")
