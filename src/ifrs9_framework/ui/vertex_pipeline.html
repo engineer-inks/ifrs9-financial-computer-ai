@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLOps Pipeline Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; }
+        .canvas-bg { background-image: radial-gradient(#e2e8f0 1px, transparent 1px); background-size: 20px 20px; }
+        .node-card { transition: all 0.2s ease; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); cursor: pointer; }
+        .node-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-color: #3b82f6; }
+        .node-selected { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important; }
+        .path-line { stroke: #94a3b8; stroke-width: 2; fill: none; }
+    </style>
+</head>
+<body class="h-screen w-screen flex overflow-hidden text-slate-800">
+
+    <aside class="w-72 bg-white border-r border-slate-200 flex flex-col z-20">
+        <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+            <h1 class="font-bold text-sm text-slate-800">Vertex AI Sim</h1>
+            <div class="flex space-x-2">
+                <button onclick="runPipeline()" class="p-2 bg-green-100 text-green-600 rounded hover:bg-green-200">▶</button>
+                <button onclick="cancelPipeline()" class="p-2 bg-red-100 text-red-600 rounded hover:bg-red-200">⏹</button>
+            </div>
+        </div>
+        <div class="p-4 flex-1 overflow-y-auto" id="sidebar-content">
+            <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Pipeline Status</h2>
+            <div id="status-list" class="space-y-2"></div>
+        </div>
+    </aside>
+
+    <main class="flex-1 relative canvas-bg overflow-auto">
+        <svg class="absolute top-0 left-0 w-full h-full pointer-events-none" id="edges-container"></svg>
+        <div id="nodes-container" class="relative w-full h-full min-w-[800px] min-h-[600px]"></div>
+    </main>
+
+    <aside class="w-96 bg-white border-l border-slate-200 flex flex-col z-20 transform transition-transform duration-300 translate-x-full" id="details-panel">
+        <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+            <h2 class="font-semibold text-slate-800" id="panel-title">Node Details</h2>
+            <button onclick="closePanel()" class="text-slate-400">✕</button>
+        </div>
+        <div class="p-4 text-xs font-mono bg-slate-900 text-green-400 h-64 overflow-y-auto" id="panel-logs"></div>
+    </aside>
+
+    <script>
+        const API_BASE = "http://localhost:8000/api";
+        const pipelineData = [
+            { id: "step_1", title: "1. Ingestão", x: 350, y: 50 },
+            { id: "step_2", title: "2. Engenharia", x: 350, y: 180 },
+            { id: "step_3", title: "3. Treinamento", x: 350, y: 320 },
+            { id: "step_4", title: "4. Auditoria", x: 350, y: 460 }
+        ];
+
+        async function updateDashboard() {
+            try {
+                const res = await fetch(`${API_BASE}/pipeline-status`);
+                const data = await res.json();
+                const container = document.getElementById('status-list');
+                container.innerHTML = '';
+                
+                Object.entries(data.nodes || {}).forEach(([id, node]) => {
+                    const el = document.createElement('div');
+                    el.className = `p-3 rounded-lg border ${node.status === 'running' ? 'bg-blue-50 border-blue-200' : 'bg-slate-50'}`;
+                    el.innerHTML = `<p class="text-xs font-bold">${node.title}</p><p class="text-[10px] text-slate-500">${node.status}</p>`;
+                    container.appendChild(el);
+                });
+            } catch(e) { console.error("Update failed", e); }
+        }
+
+        async function runPipeline() { 
+            await fetch(`${API_BASE}/run-pipeline`, { method: 'POST' }); 
+            setInterval(updateDashboard, 1000); 
+        }
+        async function cancelPipeline() { await fetch(`${API_BASE}/cancel-pipeline`, { method: 'POST' }); }
+        function closePanel() { document.getElementById('details-panel').classList.add('translate-x-full'); }
+
+        window.onload = () => {
+            const container = document.getElementById('nodes-container');
+            pipelineData.forEach(node => {
+                const el = document.createElement('div');
+                el.className = "absolute bg-white border border-slate-300 rounded-lg p-3 node-card w-[200px]";
+                el.style.left = node.x + 'px'; el.style.top = node.y + 'px';
+                el.innerHTML = `<span class="font-semibold text-sm">${node.title}</span>`;
+                el.onclick = () => {
+                    document.getElementById('details-panel').classList.remove('translate-x-full');
+                    document.getElementById('panel-title').innerText = node.title;
+                };
+                container.appendChild(el);
+            });
+
+            // Draw simple lines
+            const svg = document.getElementById('edges-container');
+            for(let i=0; i<pipelineData.length-1; i++) {
+                const p = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                p.setAttribute("x1", pipelineData[i].x + 100);
+                p.setAttribute("y1", pipelineData[i].y + 50);
+                p.setAttribute("x2", pipelineData[i+1].x + 100);
+                p.setAttribute("y2", pipelineData[i+1].y);
+                p.setAttribute("class", "path-line");
+                svg.appendChild(p);
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,50 +1,42 @@
+algorithm: catboost
+auto_tune: true
+categorical_features:
+- uf
+- codigo_contrato
+- tipo_produto
+- data_contratacao
+- data_vencimento
+- data_evento
+group_column: codigo_contrato
+hyperparameters:
+  depth:
+  - 2
+  - 10
+  focal_alpha:
+  - 0.1
+  - 0.9
+  focal_gamma:
+  - 0.5
+  - 5
+  l2_leaf_reg:
+  - 1
+  - 20
+  learning_rate:
+  - 0.001
+  - 0.3
+loss_function: focal
+numeric_features:
+- cliente_id
+- idade
+- renda
+- obito_flag
+- zona_risco_flag
+- bureau_score
+- prazo_meses
+- limite_credito
+- valor_financiado
+- selic_contratacao
+- churn_flag
 pipeline_name: ifrs9_credit_origination
-version: 1.1.0
-environment: development
-data_paths:
-  raw_data: ../src/ifrs9_framework/data/raw/synthetic_credit_data.parquet
-recipe:
-  target: default_flag
-  features:
-    numeric:
-    - idade
-    - renda
-    - zona_risco_flag
-    - obito_flag
-    - bureau_score
-    - prazo_meses
-    - limite_credito
-    - valor_financiado
-    - selic_contratacao
-    - churn_flag
-    categorical:
-    - uf
-    - tipo_produto
-    - codigo_contrato
-    - data_contratacao
-    - data_vencimento
-  engineering:
-    apply_yeo_johnson_to:
-    - renda
-    - limite_credito
-    - valor_financiado
-model_training:
-  algorithm: catboost
-  hyperparameter_tuning:
-    auto_tune: true
-    engine: optuna
-    search_space:
-      depth:
-      - 2
-      - 10
-      learning_rate:
-      - 0.001
-      - 0.3
-      l2_leaf_reg:
-      - 1
-      - 20
-      scale_pos_weight:
-      - 1
-      - 50
-  static_params:
-    iterations: 300
+target_column: default_flag
+yeo_johnson_features: []

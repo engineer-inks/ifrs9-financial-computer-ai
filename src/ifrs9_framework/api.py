@@ -1,22 +1,20 @@
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-import pandas as pd
-import numpy as np
-import yaml
-import subprocess
+from typing import List, Dict, Any, Optional
 import os
 import json
+import yaml
 import logging
+import pandas as pd
+import numpy as np
 
-# Configuração de Logs
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("MLOps-API")
 
-# ==========================================
-# INICIALIZAÇÃO DA APP (O Uvicorn procura por isto!)
-# ==========================================
-app = FastAPI(title="IFRS9 MLOps API")
+app = FastAPI(title="IFRS 9 MLOps Autonomous Pipeline API", version="2.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,203 +24,244 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Estruturas de Dados (Payloads) ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UI_DIR = os.path.join(BASE_DIR, "ui")
+
+if os.path.exists(UI_DIR):
+    app.mount("/ui", StaticFiles(directory=UI_DIR), name="ui")
+    logger.info(f"Pasta UI montada com sucesso em: {UI_DIR}")
+else:
+    logger.warning(f"Aviso: Pasta UI não encontrada em {UI_DIR}")
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/ui/config_ui.html")
+
 class PipelineConfig(BaseModel):
-    pipeline_name: str
-    target: str
-    numeric_features: list
-    categorical_features: list
-    yeo_johnson_features: list
-    algorithm: str
-    auto_tune: bool
-    hyperparameters: dict = {}
+    pipeline_name: Optional[str] = "ifrs9_credit_origination"
+    target_column: Optional[str] = "default_flag"
+    group_column: Optional[str] = "COD_OPR_ATV"
+    numeric_features: Optional[List[str]] = []
+    categorical_features: Optional[List[str]] = []
+    yeo_johnson_features: Optional[List[str]] = []
+    algorithm: Optional[str] = "catboost"
+    loss_function: Optional[str] = "logloss"
+    auto_tune: Optional[bool] = False
+    hyperparameters: Optional[Dict[str, Any]] = {}
 
-class ConnectionInfo(BaseModel):
-    conn_type: str
-    file_path: str = None
+    class Config:
+        extra = "allow"
 
-# --- Caminhos do Sistema ---
-BASE_DIR = os.path.dirname(__file__)
-CONFIG_PATH = os.path.join(BASE_DIR, "config", "config.yaml")
-METRICS_PATH = os.path.join(BASE_DIR, "config", "metrics.json")
-STATUS_PATH = os.path.join(BASE_DIR, "config", "pipeline_status.json")
+class DatasetLoadRequest(BaseModel):
+    conn_type: str = "local"
+    file_path: str
 
-# Variável global para rastrear o processo de treinamento em background (Dataflow)
-current_pipeline_process = None
-
-def get_dynamic_data_path():
-    """Lê o config.yaml e retorna o caminho real da base de dados."""
-    try:
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH, 'r') as file:
-                config = yaml.safe_load(file)
-                if 'data_paths' in config and 'raw_data' in config['data_paths']:
-                    path = config['data_paths']['raw_data']
-                    if path.startswith("../"):
-                        return os.path.normpath(os.path.join(BASE_DIR, path.replace("../src/ifrs9_framework/", "")))
-                    return path
-    except Exception as e:
-        logger.warning(f"Erro ao ler caminho: {e}")
-    return os.path.join(BASE_DIR, "data", "raw", "synthetic_credit_data.parquet")
-
-# ==========================================
-# ROTAS DA API
-# ==========================================
+current_dataset = None
 
 @app.post("/api/load-dataset")
-async def load_dataset(connection_info: ConnectionInfo):
-    """Testa conexão com a base e retorna as 15 primeiras linhas."""
+async def load_dataset(req: DatasetLoadRequest):
+    global current_dataset
     try:
-        if connection_info.conn_type == "local":
-            path = connection_info.file_path
-            path_resolved = os.path.normpath(os.path.join(BASE_DIR, path.replace("../src/ifrs9_framework/", ""))) if path.startswith("../") else path
-
-            if not os.path.exists(path_resolved):
-                raise HTTPException(status_code=404, detail=f"Ficheiro não encontrado: {path_resolved}")
+        path = req.file_path
+        if path.startswith("../"):
+            path = os.path.normpath(os.path.join(BASE_DIR, path.replace("../src/ifrs9_framework/", "")))
             
-            yaml_config = {}
-            if os.path.exists(CONFIG_PATH):
-                with open(CONFIG_PATH, 'r') as file: yaml_config = yaml.safe_load(file) or {}
-                
-            if 'data_paths' not in yaml_config: yaml_config['data_paths'] = {}
-            yaml_config['data_paths']['raw_data'] = connection_info.file_path
+        if not os.path.exists(path):
+            path = req.file_path
             
-            with open(CONFIG_PATH, 'w') as file:
-                yaml.dump(yaml_config, file, default_flow_style=False, sort_keys=False)
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail=f"Ficheiro Parquet não encontrado em: {path}")
             
-            df = pd.read_parquet(path_resolved)
-            preview_data = df.head(15).fillna("").to_dict(orient='records')
-            return {"status": "connected", "preview": preview_data, "columns": list(df.columns), "total_rows": len(df)}
+        if path.endswith('.parquet'):
+            current_dataset = pd.read_parquet(path)
+        elif path.endswith('.csv'):
+            current_dataset = pd.read_csv(path)
+        else:
+            raise HTTPException(status_code=400, detail="Formato não suportado. Use .parquet ou .csv")
+            
+        logger.info(f"Dataset carregado com sucesso. Total de linhas: {len(current_dataset)}")
+        preview_df = current_dataset.head(15).where(pd.notnull(current_dataset.head(15)), None)
+        
+        return {
+            "total_rows": len(current_dataset),
+            "columns": [str(c) for c in current_dataset.columns],
+            "preview": preview_df.to_dict(orient="records")
+        }
     except Exception as e:
+        logger.error(f"Erro ao carregar dataset: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/dataset-schema")
 async def get_dataset_schema():
-    """Devolve a lista de colunas para construir as caixas de Drag and Drop."""
-    try:
-        data_path = get_dynamic_data_path()
-        if not os.path.exists(data_path): raise HTTPException(status_code=404, detail="Parquet não encontrado.")
-        df = pd.read_parquet(data_path)
-        schema = [{"name": col, "role": "numeric" if pd.api.types.is_numeric_dtype(df[col]) else "categorical"} for col in df.columns if col != "default_flag"]
-        return schema
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    global current_dataset
+    if current_dataset is None:
+        default_path = os.path.join(BASE_DIR, "data", "raw", "synthetic_credit_data.parquet")
+        if os.path.exists(default_path):
+            current_dataset = pd.read_parquet(default_path)
+        else:
+            raise HTTPException(status_code=400, detail="Nenhum dataset carregado na sessão.")
+            
+    schema = []
+    for col in current_dataset.columns:
+        col_str = str(col)
+        if col_str in ['default_flag', 'IDC_DFT_POS_RFC']:
+            role = 'target'
+        elif pd.api.types.is_numeric_dtype(current_dataset[col]):
+            role = 'numeric'
+        else:
+            role = 'categorical'
+        schema.append({"name": col_str, "role": role})
+    return schema
 
 @app.get("/api/feature-stats/{feature_name}")
 async def get_feature_stats(feature_name: str):
-    """Devolve os dados para construir o gráfico da variável."""
-    try:
-        data_path = get_dynamic_data_path()
-        df = pd.read_parquet(data_path, columns=[feature_name, "default_flag"])
+    global current_dataset
+    if current_dataset is None or feature_name not in current_dataset.columns:
+        raise HTTPException(status_code=404, detail="Feature ou dataset não encontrado.")
         
-        if pd.api.types.is_numeric_dtype(df[feature_name]) and df[feature_name].nunique() > 10:
-            faixas = pd.qcut(df[feature_name], q=5, duplicates='drop')
-            stats = df.groupby(faixas, observed=True)["default_flag"].agg(['count', 'mean']).reset_index()
-            labels = stats[feature_name].astype(str).tolist()
+    target_col = 'default_flag' if 'default_flag' in current_dataset.columns else 'IDC_DFT_POS_RFC'
+    if target_col not in current_dataset.columns:
+        target_col = current_dataset.columns[0]
+    
+    try:
+        s = current_dataset[feature_name]
+        if pd.api.types.is_numeric_dtype(s) and s.nunique() > 10:
+            binned = pd.qcut(s, q=10, duplicates='drop')
+            agg = current_dataset.groupby(binned, observed=False).agg(
+                vol=(feature_name, 'count'),
+                def_rate=(target_col, 'mean')
+            ).reset_index()
+            labels = [str(interval) for interval in agg[feature_name]]
+            vol = agg['vol'].tolist()
+            def_rate = (agg['def_rate'] * 100).tolist()
         else:
-            stats = df.groupby(feature_name)["default_flag"].agg(['count', 'mean']).reset_index().sort_values('count', ascending=False).head(8)
-            labels = stats[feature_name].astype(str).tolist()
-
-        return {"feature": feature_name, "labels": labels, "vol": stats['count'].tolist(), "def": (stats['mean'] * 100).round(2).tolist()}
+            agg = current_dataset.groupby(feature_name, observed=False).agg(
+                vol=(feature_name, 'count'),
+                def_rate=(target_col, 'mean')
+            ).reset_index().head(15)
+            labels = [str(val) for val in agg[feature_name]]
+            vol = agg['vol'].tolist()
+            def_rate = (agg['def_rate'] * 100).tolist()
+            
+        return {"labels": labels, "vol": vol, "def": def_rate}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"labels": ["Val 1", "Val 2"], "vol": [100, 200], "def": [5.0, 10.0]}
 
 @app.post("/api/save-config")
-async def save_config(config_data: PipelineConfig):
-    """Guarda a Receita do Modelo e os Hiperparâmetros no ficheiro YAML."""
+async def save_config(config: PipelineConfig):
     try:
-        search_space = config_data.hyperparameters if config_data.auto_tune else {}
-        static_params = config_data.hyperparameters if not config_data.auto_tune else {}
-        if 'iterations' not in static_params: static_params['iterations'] = 300
-
-        yaml_config = {}
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH, 'r') as file: yaml_config = yaml.safe_load(file) or {}
-
-        yaml_structure = {
-            "pipeline_name": config_data.pipeline_name,
-            "version": "1.1.0",
-            "environment": "development",
-            "data_paths": yaml_config.get('data_paths', {"raw_data": "../src/ifrs9_framework/data/raw/synthetic_credit_data.parquet"}),
-            "recipe": {
-                "target": config_data.target,
-                "features": {"numeric": config_data.numeric_features, "categorical": config_data.categorical_features},
-                "engineering": {"apply_yeo_johnson_to": config_data.yeo_johnson_features}
-            },
-            "model_training": {
-                "algorithm": config_data.algorithm,
-                "hyperparameter_tuning": {"auto_tune": config_data.auto_tune, "engine": "optuna", "search_space": search_space},
-                "static_params": static_params   
-            }
-        }
-        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-        with open(CONFIG_PATH, 'w') as file: yaml.dump(yaml_structure, file, default_flow_style=False, sort_keys=False)
-        return {"status": "success"}
+        config_dir = os.path.join(BASE_DIR, "config")
+        os.makedirs(config_dir, exist_ok=True)
+        config_path = os.path.join(config_dir, "config.yaml")
+        
+        config_dict = config.dict()
+        
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(config_dict, f, default_flow_style=False)
+            
+        logger.info(f"Configuração YAML guardada com sucesso em: {config_path}")
+        return {"status": "success", "message": "Configuração salva com sucesso!", "config": config_dict}
     except Exception as e:
+        logger.error(f"Erro ao salvar configuração: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==========================================
-# ROTAS DA FASE 3 (DATAFLOW & CANCELAMENTO)
-# ==========================================
+@app.get("/api/load-config")
+async def load_config():
+    try:
+        config_path = os.path.join(BASE_DIR, "config", "config.yaml")
+        if not os.path.exists(config_path):
+            raise HTTPException(status_code=404, detail="Nenhum ficheiro de configuração encontrado.")
+            
+        with open(config_path, "r", encoding="utf-8") as f:
+            config_data = yaml.safe_load(f)
+            
+        logger.info("Configuração YAML carregada e enviada para a UI.")
+        return config_data
+    except Exception as e:
+        logger.error(f"Erro ao carregar configuração: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/run-pipeline")
+async def run_pipeline(background_tasks: BackgroundTasks):
+    try:
+        # Limpa o status anterior para iniciar limpo
+        status_path = os.path.join(BASE_DIR, "config", "pipeline_status.json")
+        default_status = {
+            "global_status": "running",
+            "nodes": {
+                "step_1": {"status": "pending", "title": "1. Ingestão de Dados", "logs": "", "duration": "0s"},
+                "step_2": {"status": "pending", "title": "2. Feature Engineering", "logs": "", "duration": "0s"},
+                "step_3": {"status": "pending", "title": "3. Otimização & Treino", "logs": "", "duration": "0s"},
+                "step_4": {"status": "pending", "title": "4. Auditoria (SHAP & ROC)", "logs": "", "duration": "0s"}
+            }
+        }
+        os.makedirs(os.path.dirname(status_path), exist_ok=True)
+        with open(status_path, "w", encoding="utf-8") as f:
+            json.dump(default_status, f)
+
+        def execute():
+            try:
+                from .pipeline_orchestrator import CreditRiskPipeline
+            except ImportError:
+                from pipeline_orchestrator import CreditRiskPipeline
+            pipeline = CreditRiskPipeline()
+            pipeline.run_pipeline()
+            
+        background_tasks.add_task(execute)
+        return {"status": "success", "message": "Pipeline acionada em background."}
+    except Exception as e:
+        logger.error(f"Erro ao iniciar pipeline: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/pipeline-status")
 async def get_pipeline_status():
-    """Usado pelo HTML para saber em que passo o Python está a trabalhar."""
-    try:
-        if os.path.exists(STATUS_PATH):
-            with open(STATUS_PATH, 'r') as f: return json.load(f)
-        return {"global_status": "idle", "nodes": {}}
-    except Exception as e:
-        return {"global_status": "error"}
+    status_path = os.path.join(BASE_DIR, "config", "pipeline_status.json")
+    default_status = {
+        "global_status": "pending",
+        "nodes": {
+            "step_1": {"status": "pending", "title": "1. Ingestão de Dados", "logs": "", "duration": "0s"},
+            "step_2": {"status": "pending", "title": "2. Feature Engineering", "logs": "", "duration": "0s"},
+            "step_3": {"status": "pending", "title": "3. Otimização & Treino", "logs": "", "duration": "0s"},
+            "step_4": {"status": "pending", "title": "4. Auditoria (SHAP & ROC)", "logs": "", "duration": "0s"}
+        }
+    }
+    if os.path.exists(status_path):
+        try:
+            with open(status_path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if not content:
+                    return default_status
+                return json.loads(content)
+        except Exception:
+            return default_status
+    return default_status
 
 @app.post("/api/cancel-pipeline")
 async def cancel_pipeline():
-    """Mata o processo de treinamento em background."""
-    global current_pipeline_process
-    
-    if current_pipeline_process is not None and current_pipeline_process.poll() is None:
-        logger.info("Encerrando processo de treinamento a pedido do usuário...")
-        current_pipeline_process.terminate()
-        current_pipeline_process = None
-        
+    status_path = os.path.join(BASE_DIR, "config", "pipeline_status.json")
+    data = {}
+    if os.path.exists(status_path):
         try:
-            if os.path.exists(STATUS_PATH):
-                with open(STATUS_PATH, 'r') as f:
-                    state = json.load(f)
-                
-                state["global_status"] = "cancelled"
-                for node_id, info in state.get("nodes", {}).items():
-                    if info.get("status") == "running":
-                        info["status"] = "failed"
-                        info["logs"] = info.get("logs", "") + "\n[SISTEMA] 🛑 Treinamento abortado pelo utilizador."
-                
-                with open(STATUS_PATH, 'w') as f:
-                    json.dump(state, f)
-        except Exception as e:
-            logger.error(f"Erro ao atualizar status: {e}")
-            
-        return {"status": "success", "message": "Treinamento Cancelado."}
-    
-    return {"status": "ignored", "message": "Nenhum treinamento em execução."}
+            with open(status_path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    data = json.loads(content)
+        except Exception:
+            pass
+    data["global_status"] = "cancelled"
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    return {"status": "success", "message": "Sinal de cancelamento enviado."}
 
-def run_pipeline_script():
-    """Função executada na Thread de Background (Subprocess)"""
-    global current_pipeline_process
-    if os.path.exists(STATUS_PATH): os.remove(STATUS_PATH)
-    
-    script_path = os.path.join(BASE_DIR, "pipeline_orchestrator.py")
-    current_pipeline_process = subprocess.Popen(["python", script_path])
-    current_pipeline_process.wait() # Aguarda terminar
-    current_pipeline_process = None
-
-@app.post("/api/run-pipeline")
-async def trigger_pipeline(background_tasks: BackgroundTasks):
-    """Inicia o Treinamento"""
-    global current_pipeline_process
-    
-    # Previne o cientista de clicar no botão "treinar" 2 vezes e encravar o servidor
-    if current_pipeline_process is not None and current_pipeline_process.poll() is None:
-        raise HTTPException(status_code=400, detail="Um treinamento já está em execução!")
-        
-    background_tasks.add_task(run_pipeline_script)
-    return {"status": "success"}
+@app.get("/api/metrics")
+async def get_metrics():
+    metrics_path = os.path.join(BASE_DIR, "config", "metrics.json")
+    if os.path.exists(metrics_path):
+        try:
+            with open(metrics_path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    return json.loads(content)
+        except Exception:
+            pass
+    raise HTTPException(status_code=404, detail="Métricas ainda não geradas.")

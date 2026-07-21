@@ -18,4 +18,5 @@ services:
     # Inicia o JupyterLab e o servidor do MLflow em background
     command: >
       bash -c "jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.token='' --ServerApp.password='' &
-               mlflow server --host 0.0.0.0 --port 5000"
+            mlflow server --host 0.0.0.0 --port 5000 &
+            uvicorn src.ifrs9_framework.api:app --host 0.0.0.0 --port 8000 --reload"

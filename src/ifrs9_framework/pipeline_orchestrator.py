@@ -1,34 +1,46 @@
 import os
+import sys
 import yaml
 import json
 import time
 import logging
-import pandas as pd
 from datetime import datetime
-from catboost import CatBoostClassifier
-# Importando LightGBM (pois adicionamos no UI)
-from lightgbm import LGBMClassifier 
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import average_precision_score
-import optuna
+import pandas as pd
+import numpy as np
 
-# Desativamos o log padrão do Optuna porque nós vamos criar o nosso próprio log visual!
-optuna.logging.set_verbosity(optuna.logging.ERROR)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(BASE_DIR)
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s', handlers=[logging.StreamHandler()])
+try:
+    from core_utils import configurar_logging, apply_custom_plot_style
+    from features_pipeline import load_and_filter_data, features_engineer, build_preprocessor, get_focal_loss_obj
+    from advanced_metrics_and_split import div_train_test_split, gerar_metricas_classificacao, salvar_metricas_csv
+    from model_training_engine import preparar_matrizes, search_hyperparameters_and_training_model
+    from hyper_tuner_advanced import otimizar_hiperparametros_grid_search
+    from calibration_engine import recalibrar_probabilidade_shift
+    from oof_calibration_engine import optimization_threshold, gerar_grafico_resumo_kpis_completo, calcular_metricas_performance
+    from reporting_engine import plotar_feature_importance, gerar_analise_temporal
+    from evaluation_engine import salvar_pipeline_completo, executar_teste_aderencia_buckets
+    from sklearn.metrics import roc_auc_score, brier_score_loss, recall_score, precision_score
+    from scipy.stats import ks_2samp
+    MODULES_LOADED = True
+except ImportError as e:
+    MODULES_LOADED = False
+    ERRO_IMPORT = str(e)
+
 logger = logging.getLogger("MLOps-Orchestrator")
+logger.setLevel(logging.INFO)
 
 class PipelineTracker:
-    """Motor de telemetria que comunica o progresso para o Painel Visual HTML"""
     def __init__(self, base_dir):
         self.status_path = os.path.join(base_dir, "config", "pipeline_status.json")
         self.state = {
             "global_status": "running",
             "nodes": {
-                "step_1": {"status": "pending", "title": "1. Ingestão de Dados", "logs": "", "duration": "0s"},
+                "step_1": {"status": "pending", "title": "1. Ingestão & Filtros", "logs": "", "duration": "0s"},
                 "step_2": {"status": "pending", "title": "2. Feature Engineering", "logs": "", "duration": "0s"},
-                "step_3": {"status": "pending", "title": "3. Otimização & Treino", "logs": "", "duration": "0s"},
-                "step_4": {"status": "pending", "title": "4. Auditoria (SHAP & ROC)", "logs": "", "duration": "0s"}
+                "step_3": {"status": "pending", "title": "3. CatBoost & Tuning", "logs": "", "duration": "0s"},
+                "step_4": {"status": "pending", "title": "4. Calibração OOF & Deploy", "logs": "", "duration": "0s"}
             }
         }
         self.start_times = {}
@@ -55,7 +67,6 @@ class PipelineTracker:
             self.state["nodes"][node_id]["duration"] = f"{dur:.1f}s"
 
         self._save()
-        # Removido o sleep longo daqui para o Optuna poder disparar logs super rápido!
 
     def finish_pipeline(self, status):
         self.state["global_status"] = status
@@ -63,142 +74,148 @@ class PipelineTracker:
 
 class CreditRiskPipeline:
     def __init__(self):
-        self.base_dir = os.path.dirname(__file__)
+        self.base_dir = BASE_DIR
         self.config_path = os.path.join(self.base_dir, "config", "config.yaml")
-        with open(self.config_path, 'r') as file: self.config = yaml.safe_load(file)
+        
+        self.config = {
+            'target_column': 'default_flag',
+            'group_column': 'COD_OPR_ATV',
+            'test_size': 0.25,
+            'random_state': 42,
+            'GRAPHICS_DIR': os.path.join(self.base_dir, "outputs", "graphics"),
+            'metrics': os.path.join(self.base_dir, "outputs"),
+            'models_dir': os.path.join(self.base_dir, "models")
+        }
+        
+        if os.path.exists(self.config_path):
+            with open(self.config_path, 'r') as file: 
+                loaded_config = yaml.safe_load(file)
+                if loaded_config:
+                    self.config.update(loaded_config)
+                    
+        if not self.config.get('GRAPHICS_DIR'):
+            self.config['GRAPHICS_DIR'] = os.path.join(self.base_dir, "outputs", "graphics")
+        if not self.config.get('metrics'):
+            self.config['metrics'] = os.path.join(self.base_dir, "outputs")
+        if not self.config.get('models_dir'):
+            self.config['models_dir'] = os.path.join(self.base_dir, "models")
+            
         self.tracker = PipelineTracker(self.base_dir)
+        if MODULES_LOADED:
+            apply_custom_plot_style()
 
     def step_1_ingestion(self):
         node = "step_1"
         self.tracker.update_node(node, "running", "Iniciando Ingestão de Dados...")
         
-        path = self.config.get('data_paths', {}).get('raw_data', "data/raw/synthetic_credit_data.parquet")
-        if path.startswith("../"):
-            path = os.path.normpath(os.path.join(self.base_dir, path.replace("../src/ifrs9_framework/", "")))
+        if not MODULES_LOADED:
+            raise ImportError(f"Falha ao carregar motores modulares: {ERRO_IMPORT}")
+
+        self.df = load_and_filter_data(self.config, logger)
         
-        self.tracker.update_node(node, "running", f"Lendo base Parquet: {path}")
-        self.df = pd.read_parquet(path)
-        self.tracker.update_node(node, "running", f"Dados carregados. Total: {len(self.df)} linhas.")
-        time.sleep(0.5) # Pausa estética leve
-        self.tracker.update_node(node, "success", "Passo 1 concluído.")
+        group_col = self.config.get('group_column', 'COD_OPR_ATV')
+        if group_col not in self.df.columns:
+            self.tracker.update_node(node, "running", "⚠️ Coluna de grupo não encontrada. Criando proxy...")
+            self.df[group_col] = np.arange(len(self.df))
+            
+        self.tracker.update_node(node, "success", f"Ingestão concluída. Total: {len(self.df):,} linhas.")
 
     def step_2_feature_engineering(self):
         node = "step_2"
-        self.tracker.update_node(node, "running", "Processando Engenharia de Features (YEO-JOHNSON)...")
+        self.tracker.update_node(node, "running", "Processando Engenharia de Features...")
         
-        recipe = self.config['recipe']
-        self.target = recipe['target']
-        self.features = recipe['features']['numeric'] + recipe['features']['categorical']
+        self.df_eng = features_engineer(self.df, self.config, logger)
         
-        # --- A CORREÇÃO DO SEU BUG (DATETIME/FLOAT CRASH NO CATBOOST) ---
-        # Forçamos tudo o que for categórico a virar "String" pura.
-        cat_cols = recipe['features'].get('categorical', [])
-        if cat_cols:
-            self.tracker.update_node(node, "running", f"Convertendo categóricas para string: {cat_cols}")
-            for col in cat_cols:
-                self.df[col] = self.df[col].astype(str)
-        # -----------------------------------------------------------------
-
-        if 'data_contratacao' in self.df.columns:
-            self.df = self.df.sort_values('data_contratacao')
-            
-        X = self.df[self.features]
-        y = self.df[self.target]
+        self.tracker.update_node(node, "running", "Aplicando Group Split (Treino vs Teste)...")
+        self.df_train_val, self.df_test = div_train_test_split(self.df_eng, self.config)
         
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-        self.tracker.update_node(node, "running", f"Train Split OOT: {len(self.X_train)} Treino | {len(self.X_test)} Teste.")
-        time.sleep(0.5)
-        self.tracker.update_node(node, "success", "Base particionada cronologicamente.")
+        self.tracker.update_node(node, "running", "Limpando constantes e aplicando pré-processador...")
+        self.data_dict = preparar_matrizes(self.df_train_val, self.df_test, self.config, build_preprocessor)
+        
+        self.tracker.update_node(node, "success", "Engenharia de features e split concluídos.")
 
     def step_3_model_training(self):
         node = "step_3"
-        self.tracker.update_node(node, "running", "Iniciando Treinamento do Modelo...")
+        self.tracker.update_node(node, "running", "Iniciando Otimização de Hiperparâmetros...")
         
-        algo = self.config.get('model_training', {}).get('algorithm', 'catboost')
-        self.tracker.update_node(node, "running", f"Algoritmo Selecionado: {algo.upper()}")
-        
-        # Configurações do Optuna
         tuning_cfg = self.config.get('model_training', {}).get('hyperparameter_tuning', {})
         is_optuna = tuning_cfg.get('auto_tune', False)
-        search_space = tuning_cfg.get('search_space', {})
         
-        cat_cols = self.config['recipe']['features'].get('categorical', [])
-        cat_features_idx = [self.features.index(col) for col in cat_cols] if cat_cols else []
-
-        best_params = self.config.get('model_training', {}).get('static_params', {})
+        self.model_final, self.melhores_params = search_hyperparameters_and_training_model(
+            config=self.config,
+            data_dict=self.data_dict,
+            tuner_func=otimizar_hiperparametros_grid_search,
+            get_focal_loss_obj_func=get_focal_loss_obj,
+            recalibrar_func=recalibrar_probabilidade_shift,
+            sample_base=True,
+            search_method='grid' if is_optuna else 'focal',
+            metodo='logloss'
+        )
         
-        # === O NOVO MOTOR DETALHADO DO OPTUNA ===
-        if is_optuna:
-            self.tracker.update_node(node, "running", ">> ATIVANDO OPTUNA (OTIMIZAÇÃO BAYESIANA) <<")
-            
-            def objective(trial):
-                # Sorteio inteligente nos limites que o usuário escolheu na Web
-                lr_range = search_space.get('learning_rate', [0.01, 0.1])
-                w_range = search_space.get('scale_pos_weight', [1.0, 15.0])
-                
-                params = {
-                    'iterations': 50, # Baixo para ir rápido na simulação
-                    'learning_rate': trial.suggest_float('learning_rate', lr_range[0], lr_range[1]),
-                    'scale_pos_weight': trial.suggest_float('scale_pos_weight', w_range[0], w_range[1])
-                }
-                
-                # Suporte aos dois algoritmos
-                if algo == 'lightgbm':
-                    params['max_depth'] = trial.suggest_int('max_depth', int(search_space.get('max_depth', [4, 8])[0]), int(search_space.get('max_depth', [4, 8])[1]))
-                    model = LGBMClassifier(**params, random_state=42, verbose=-1)
-                    # LightGBM requer que colunas sejam do tipo 'category'
-                    for c in cat_cols:
-                        self.X_train[c] = self.X_train[c].astype('category')
-                        self.X_test[c] = self.X_test[c].astype('category')
-                else:
-                    params['depth'] = trial.suggest_int('depth', int(search_space.get('depth', [4, 8])[0]), int(search_space.get('depth', [4, 8])[1]))
-                    model = CatBoostClassifier(**params, cat_features=cat_features_idx, verbose=0, random_seed=42)
-                
-                model.fit(self.X_train, self.y_train)
-                preds = model.predict_proba(self.X_test)[:, 1]
-                return average_precision_score(self.y_test, preds)
-
-            study = optuna.create_study(direction='maximize')
-            n_trials = 5 # Executamos 5 testes de IA
-
-            # Callback para cuspir as métricas no Dataflow em tempo real!
-            def optuna_logger(study, trial):
-                self.tracker.update_node(node, "running", f"[Optuna] Trial {trial.number + 1}/{n_trials} | PR-AUC = {trial.value:.4f} | LR: {trial.params['learning_rate']:.3f}")
-            
-            study.optimize(objective, n_trials=n_trials, callbacks=[optuna_logger])
-            best_params = study.best_params
-            best_params['iterations'] = 150 # Para o modelo final
-            
-            self.tracker.update_node(node, "running", f">> MELHOR COMBINAÇÃO ENCONTRADA: {best_params} <<")
-        # =========================================
-        
-        self.tracker.update_node(node, "running", f"Construindo árvores finais ({algo.upper()})...")
-        
-        # Treinamento Final
-        if algo == 'lightgbm':
-            for c in cat_cols:
-                self.X_train[c] = self.X_train[c].astype('category')
-                self.X_test[c] = self.X_test[c].astype('category')
-            self.model = LGBMClassifier(**best_params, random_state=42, verbose=-1)
-        else:
-            self.model = CatBoostClassifier(**best_params, cat_features=cat_features_idx, verbose=0, random_seed=42)
-            
-        self.model.fit(self.X_train, self.y_train)
-        
-        self.tracker.update_node(node, "success", "Treinamento Finalizado e Convergido!")
+        self.tracker.update_node(node, "success", "Modelo otimizado e treinado na base completa.")
 
     def step_4_evaluation_and_audit(self):
         node = "step_4"
-        self.tracker.update_node(node, "running", "A calcular Feature Importance (SHAP)...")
+        self.tracker.update_node(node, "running", "Iniciando Calibração Avançada OOF e Relatórios IFRS 9...")
         
-        from visualization.model_dashboard import MetricsGenerator
-        metrics_path = os.path.join(self.base_dir, "config", "metrics.json")
-        auditor = MetricsGenerator(model=self.model, X_test=self.X_test, y_test=self.y_test, cutoff=0.04)
-        auditor.generate_metrics(metrics_path)
+        calibrator, resultado_otimo, f1_h, y_prob_test_final, y_pred_test = optimization_threshold(
+            config=self.config,
+            model_final=self.model_final,
+            X_train_val_processed=self.data_dict['X_train_val_processed'],
+            y_train_val=self.data_dict['y_train_val'],
+            groups_train_val=self.data_dict['groups_train'],
+            melhores_params=self.melhores_params,
+            X_test_processed=self.data_dict['X_test_processed'],
+            y_test=self.data_dict['y_test'],
+            cat_indices=self.data_dict['cat_indices'],
+            preprocessor=self.data_dict['preprocessor'],
+            sample=True,
+            method='isotonic'
+        )
         
-        self.tracker.update_node(node, "running", "A empacotar métricas de Auditoria ROC/KS.")
-        time.sleep(0.5)
-        self.tracker.update_node(node, "success", "Métricas gravadas no Dashboard Web.")
+        t_otimo = resultado_otimo['threshold']
+        self.tracker.update_node(node, "running", f"Threshold Otimizado: {t_otimo:.2%} | Ratio: {resultado_otimo['peso']:.2f}x")
+        
+        y_test = self.data_dict['y_test']
+        auc = roc_auc_score(y_test, y_prob_test_final)
+        ks_stat, _ = ks_2samp(y_prob_test_final[y_test == 0], y_prob_test_final[y_test == 1])
+        acc, mcc = calcular_metricas_performance(y_test, y_pred_test)
+        prec = precision_score(y_test, y_pred_test, zero_division=0)
+        rec = recall_score(y_test, y_pred_test, zero_division=0)
+        brier = brier_score_loss(y_test, y_prob_test_final)
+        
+        out_dir = self.config.get('GRAPHICS_DIR')
+        if not out_dir:
+            out_dir = os.path.join(self.base_dir, "outputs", "graphics")
+            
+        gerar_grafico_resumo_kpis_completo(auc, ks_stat, acc, mcc, f1_h, prec, rec, out_dir)
+        matriz_res = gerar_metricas_classificacao(y_test, y_prob_test_final, out_dir, t_otimo, method='Isotonic_OOF')
+        executar_teste_aderencia_buckets(y_test, y_prob_test_final, n_bins=10)
+        plotar_feature_importance(self.model_final, self.data_dict['feature_names'], self.data_dict['X_test_processed'], self.config, out_dir)
+        
+        if 'DTA_INI_OPR' in self.df_test.columns:
+            gerar_analise_temporal(self.df_test, y_test, y_prob_test_final, out_dir, 'DTA_INI_OPR', 'Safra (Início Opr)', 'vintage_safra')
+
+        metrics = {
+            'AUC': auc, 'KS': ks_stat, 'F1': f1_h, 'Precision': prec, 'Recall': rec, 'Brier': brier,
+            'Metodo_Calibracao': 'isotonic', 'Data': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        metrics.update(matriz_res)
+        salvar_metricas_csv(self.config, metrics)
+        
+        salvar_pipeline_completo(
+            config=self.config,
+            preprocessor=self.data_dict['preprocessor'],
+            model=self.model_final,
+            threshold=t_otimo,
+            feature_names=self.data_dict['feature_names'],
+            cat_indices=self.data_dict['cat_indices'],
+            scale_pos_weight=self.melhores_params.get('w_train_calculado', 1.0),
+            isotonic_model=calibrator,
+            nome_arquivo="pipeline_modelagem_rede_v1.joblib"
+        )
+        
+        self.tracker.update_node(node, "success", "Auditoria IFRS 9 e Empacotamento Concluídos!")
 
     def run_pipeline(self):
         try:
@@ -206,12 +223,20 @@ class CreditRiskPipeline:
             self.step_2_feature_engineering()
             self.step_3_model_training()
             self.step_4_evaluation_and_audit()
+            
+            metrics_dir = self.config.get('metrics', os.path.join(self.base_dir, "config"))
+            os.makedirs(metrics_dir, exist_ok=True)
+            metrics_path = os.path.join(metrics_dir, "metrics.json")
+            with open(metrics_path, 'w') as f:
+                json.dump({"status": "Success", "model": "CatBoost_IFRS9_OOF"}, f)
+                
             self.tracker.finish_pipeline("completed")
+            logger.info("🎉 CICLO COMPLETO FINALIZADO! ARTEFATOS PRONTOS.")
+            
         except Exception as e:
-            logger.error(str(e))
-            if hasattr(self, 'tracker'):
-                self.tracker.update_node("step_3", "failed", f"CRASH: {str(e)}")
-                self.tracker.finish_pipeline("failed")
+            logger.error(f"CRASH NA PIPELINE: {str(e)}", exc_info=True)
+            self.tracker.update_node("step_4", "failed", f"CRASH: {str(e)}")
+            self.tracker.finish_pipeline("failed")
 
 if __name__ == "__main__":
     pipeline = CreditRiskPipeline()
