@@ -1,4 +1,4 @@
-algorithm: catboost
+algorithm: ebm
 auto_tune: true
 categorical_features:
 - uf
@@ -9,29 +9,26 @@ categorical_features:
 - data_evento
 group_column: codigo_contrato
 hyperparameters:
-  depth:
-  - 2
-  - 10
-  focal_alpha:
-  - 0.1
-  - 0.9
-  focal_gamma:
-  - 0.5
-  - 5
-  l2_leaf_reg:
-  - 1
-  - 20
+  interactions:
+  - 0
+  - 50
   learning_rate:
   - 0.001
   - 0.3
+  max_bins:
+  - 64
+  - 512
+  scale_pos_weight:
+  - 1
+  - 50
 loss_function: focal
 numeric_features:
 - cliente_id
 - idade
 - renda
-- obito_flag
 - zona_risco_flag
 - bureau_score
+- obito_flag
 - prazo_meses
 - limite_credito
 - valor_financiado

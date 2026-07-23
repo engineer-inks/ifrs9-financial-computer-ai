@@ -39,3 +39,5 @@ http://localhost:8000/ui/config_ui.html
 http://localhost:8000/ui/dashboard_results.html
 http://localhost:8000/ui/vertex_pipeline.html
 
+docker exec -it ifrs9-dev-env pip install interpret lightgbm
+docker logs ifrs9-dev-env

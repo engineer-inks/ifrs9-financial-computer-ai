@@ -150,7 +150,7 @@
                     </div>
                     <div>
                         <label class="block text-[11px] font-bold text-slate-500 uppercase">Group Column (Contrato)</label>
-                        <input type="text" id="cfg-group" value="COD_OPR_ATV" class="mt-1 text-sm border border-slate-300 rounded px-3 py-1.5 font-mono bg-slate-50">
+                        <input type="text" id="cfg-group" value="codigo_contrato" class="mt-1 text-sm border border-slate-300 rounded px-3 py-1.5 font-mono bg-slate-50">
                     </div>
                 </div>
             </div>
@@ -188,14 +188,14 @@
         <div id="tab-model" class="max-w-6xl mx-auto space-y-6 hidden p-8 overflow-y-auto h-full">
             <div class="mb-6">
                 <h2 class="text-2xl font-bold text-slate-800">Model Architecture & Hyperparameters</h2>
-                <p class="text-slate-500 text-sm mt-1">Configure o CatBoost, a função de perda (Focal Loss / Logloss) e as travas regulatórias.</p>
+                <p class="text-slate-500 text-sm mt-1">Configure o Algoritmo, a função de perda e as travas regulatórias.</p>
             </div>
             
             <div class="grid grid-cols-2 gap-6">
                 <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6 h-fit">
                     <div>
                         <h3 class="font-semibold text-slate-700 mb-3 border-b pb-2">1. Algoritmo de Classificação</h3>
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-3 gap-3">
                             <label class="relative cursor-pointer">
                                 <input type="radio" name="algo" value="catboost" class="peer sr-only" onchange="renderHyperparameters()" checked>
                                 <div class="p-3 rounded-lg border-2 border-slate-200 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition-all text-center"><h4 class="font-bold text-slate-800 text-sm">CatBoost</h4></div>
@@ -203,6 +203,10 @@
                             <label class="relative cursor-pointer">
                                 <input type="radio" name="algo" value="lightgbm" class="peer sr-only" onchange="renderHyperparameters()">
                                 <div class="p-3 rounded-lg border-2 border-slate-200 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition-all text-center"><h4 class="font-bold text-slate-800 text-sm">LightGBM</h4></div>
+                            </label>
+                            <label class="relative cursor-pointer">
+                                <input type="radio" name="algo" value="ebm" class="peer sr-only" onchange="renderHyperparameters()">
+                                <div class="p-3 rounded-lg border-2 border-slate-200 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition-all text-center"><h4 class="font-bold text-slate-800 text-sm">EBM</h4></div>
                             </label>
                         </div>
                     </div>
@@ -281,6 +285,7 @@
         let isConnected = false;
         let pipelineInterval = null;
         let selectedNodeId = null;
+        let nodeStartTimes = {}; // Para calcular os segundos ao vivo em JS
         
         const pipelineNodes = [
             { id: "step_1", title: "1. Ingestão de Dados", x: 40, y: 150 },
@@ -294,6 +299,27 @@
             { from: "step_2", to: "step_3" },
             { from: "step_3", to: "step_4" }
         ];
+
+        const hpConf = {
+            catboost: [
+                { id: 'depth', label: 'Tree Depth', min: 2, max: 10, defaultVal: 6, step: 1 }, 
+                { id: 'learning_rate', label: 'Learning Rate', min: 0.001, max: 0.3, defaultVal: 0.05, step: 0.001 }, 
+                { id: 'l2_leaf_reg', label: 'L2 Reg', min: 1.0, max: 20.0, defaultVal: 3.0, step: 0.5 }, 
+                { id: 'scale_pos_weight', label: 'Scale Pos Weight', min: 1.0, max: 50.0, defaultVal: 10.0, step: 0.5 }
+            ],
+            lightgbm: [
+                { id: 'max_depth', label: 'Max Depth', min: -1, max: 15, defaultVal: 6, step: 1 }, 
+                { id: 'num_leaves', label: 'Num Leaves', min: 10, max: 100, defaultVal: 31, step: 1 }, 
+                { id: 'learning_rate', label: 'Learning Rate', min: 0.001, max: 0.3, defaultVal: 0.05, step: 0.001 }, 
+                { id: 'scale_pos_weight', label: 'Scale Pos Weight', min: 1.0, max: 50.0, defaultVal: 10.0, step: 0.5 }
+            ],
+            ebm: [
+                { id: 'interactions', label: 'Max Interactions', min: 0, max: 50, defaultVal: 10, step: 1 }, 
+                { id: 'max_bins', label: 'Max Bins (Discretização)', min: 64, max: 512, defaultVal: 256, step: 16 }, 
+                { id: 'learning_rate', label: 'Learning Rate', min: 0.001, max: 0.3, defaultVal: 0.01, step: 0.001 }, 
+                { id: 'scale_pos_weight', label: 'Scale Pos Weight', min: 1.0, max: 50.0, defaultVal: 10.0, step: 0.5 }
+            ]
+        };
 
         function renderDataflowNodes() {
             const container = document.getElementById('nodes-container');
@@ -374,12 +400,18 @@
 
                 el.className = `absolute rounded-lg p-4 w-[220px] node-card cursor-pointer node-${info.status}`;
                 
+                // CRONÓMETRO VIVO JS (Tick tack sem depender de refresh server-side)
                 if(info.status === 'running') {
+                    if(!nodeStartTimes[nodeId]) nodeStartTimes[nodeId] = Date.now();
+                    const elapsed = Math.floor((Date.now() - nodeStartTimes[nodeId]) / 1000);
+                    info.duration = `${elapsed}s`; // Tick local
                     icon.innerHTML = `<svg class="animate-spin text-yellow-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
                 } else if(info.status === 'success') {
                     icon.innerHTML = `<svg class="text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>`;
+                    delete nodeStartTimes[nodeId];
                 } else if(info.status === 'failed') {
                     icon.innerHTML = `<svg class="text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>`;
+                    delete nodeStartTimes[nodeId];
                 }
             }
 
@@ -393,6 +425,9 @@
                 }
             }
             if(activeNodeId && selectedNodeId !== activeNodeId) {
+                selectNode(activeNodeId);
+            } else if (activeNodeId) {
+                // Atualiza o tempo na UI se continuar rodando
                 selectNode(activeNodeId);
             }
         }
@@ -408,6 +443,7 @@
             const badge = document.getElementById('panel-status-badge');
             if(info.status === 'running') badge.className = 'px-2 py-1 bg-yellow-100 text-yellow-700 rounded font-medium text-xs';
             else if(info.status === 'success') badge.className = 'px-2 py-1 bg-green-100 text-green-700 rounded font-medium text-xs';
+            else if(info.status === 'failed') badge.className = 'px-2 py-1 bg-red-100 text-red-700 rounded font-medium text-xs';
             else badge.className = 'px-2 py-1 bg-slate-100 text-slate-600 rounded font-medium text-xs';
             badge.innerText = info.status.toUpperCase();
 
@@ -419,6 +455,7 @@
         async function triggerPipeline() {
             try {
                 switchTab('execution');
+                nodeStartTimes = {}; // Limpa contadores vivos
                 startPolling();
                 const response = await fetch(`${API_URL}/run-pipeline`, { method: 'POST' });
                 if(!response.ok) throw new Error("Erro ao iniciar pipeline.");
@@ -501,6 +538,9 @@
             const spinner = document.getElementById('schema-spinner');
             if(spinner) spinner.classList.remove('hidden');
             list.innerHTML = '';
+            
+            resetChartToZero();
+
             try {
                 const response = await fetch(`${API_URL}/dataset-schema`);
                 if(!response.ok) throw new Error("Erro no schema.");
@@ -516,7 +556,6 @@
                             <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase ${color}">${f.role}</span>
                         </div>`;
                 });
-                if(features.length > 0) updateChart(features[0].name);
             } catch(e) {}
             finally { if(spinner) spinner.classList.add('hidden'); }
         }
@@ -529,7 +568,30 @@
             const el = document.getElementById(ev.dataTransfer.getData("text"));
             let dropzone = ev.target;
             if(!dropzone.classList.contains('dropzone')) dropzone = dropzone.closest('.dropzone');
-            if(dropzone && el) dropzone.appendChild(el);
+            
+            if(dropzone && el) {
+                dropzone.appendChild(el);
+                
+                // VERIFICA SE A RECEITA FICOU VAZIA APÓS O DROP
+                const recipeItems = document.getElementById('selected-list').querySelectorAll('.draggable-item');
+                if (recipeItems.length === 0) {
+                    resetChartToZero();
+                } else {
+                    updateChart(el.dataset.name);
+                }
+            }
+        }
+
+        function resetChartToZero() {
+            document.getElementById('feature-name-display').querySelector('span').innerText = "SELECIONE UMA FEATURE";
+            document.getElementById('feature-status').innerText = "Clique ou arraste uma feature para analisar as estatísticas...";
+            document.getElementById('feature-status').className = "text-sm text-slate-400";
+            if(featureChartInst) {
+                featureChartInst.data.labels = [];
+                featureChartInst.data.datasets[0].data = [];
+                featureChartInst.data.datasets[1].data = [];
+                featureChartInst.update();
+            }
         }
 
         let featureChartInst = null;
@@ -591,18 +653,13 @@
             document.getElementById('algo-badge').innerText = `${algo.toUpperCase()} (${loss.toUpperCase()})`;
             cont.innerHTML = '';
 
-            let params = ['depth', 'learning_rate', 'l2_leaf_reg'];
-            if(loss === 'logloss') params.push('scale_pos_weight');
-            else params.push('focal_alpha', 'focal_gamma');
+            const paramsConfig = hpConf[algo];
 
-            const defaults = { depth: 6, learning_rate: 0.05, l2_leaf_reg: 3.0, scale_pos_weight: 10.0, focal_alpha: 0.25, focal_gamma: 2.0 };
-            const ranges = { depth: [2, 10], learning_rate: [0.001, 0.3], l2_leaf_reg: [1.0, 20.0], scale_pos_weight: [1.0, 50.0], focal_alpha: [0.1, 0.9], focal_gamma: [1.0, 5.0] };
-
-            params.forEach(id => {
+            paramsConfig.forEach(p => {
                 if(mode === 'manual') {
-                    cont.innerHTML += `<div class="bg-slate-50 border border-slate-200 p-3 rounded-lg"><label class="text-sm font-semibold text-slate-700 block mb-2">${id}</label><input type="number" id="hp_${id}" value="${defaults[id]}" step="any" class="w-full text-sm border-slate-300 rounded-md shadow-sm p-1.5"></div>`;
+                    cont.innerHTML += `<div class="bg-slate-50 border border-slate-200 p-3 rounded-lg"><label class="text-sm font-semibold text-slate-700 block mb-2">${p.label}</label><input type="number" id="hp_${p.id}" value="${p.defaultVal}" step="${p.step}" class="w-full text-sm border-slate-300 rounded-md shadow-sm p-1.5"></div>`;
                 } else {
-                    cont.innerHTML += `<div class="bg-purple-50 border border-purple-100 p-3 rounded-lg"><label class="text-sm font-semibold text-purple-900 block mb-2">${id} (Range)</label><div class="flex items-center space-x-2"><input type="number" id="hp_${id}_min" value="${ranges[id][0]}" step="any" class="w-full text-sm border-purple-200 rounded-md shadow-sm p-1.5"><span class="text-slate-400">-</span><input type="number" id="hp_${id}_max" value="${ranges[id][1]}" step="any" class="w-full text-sm border-purple-200 rounded-md shadow-sm p-1.5"></div></div>`;
+                    cont.innerHTML += `<div class="bg-purple-50 border border-purple-100 p-3 rounded-lg"><label class="text-sm font-semibold text-purple-900 block mb-2">${p.label} (Range)</label><div class="flex items-center space-x-2"><input type="number" id="hp_${p.id}_min" value="${p.min}" step="${p.step}" class="w-full text-sm border-purple-200 rounded-md shadow-sm p-1.5"><span class="text-slate-400">-</span><input type="number" id="hp_${p.id}_max" value="${p.max}" step="${p.step}" class="w-full text-sm border-purple-200 rounded-md shadow-sm p-1.5"></div></div>`;
                 }
             });
         }
@@ -629,8 +686,7 @@
             if(tab === 'model') renderHyperparameters();
             if(tab === 'execution') {
                 renderDataflowNodes();
-                // APENAS INICIA O POLLING DE MONITORAMENTO. NUNCA DISPARA TREINAMENTO.
-                startPolling();
+                startPolling(); 
             }
         }
 
@@ -644,10 +700,6 @@
                     if(item.dataset.role === 'numeric') selectedNumeric.push(item.dataset.name);
                     if(item.dataset.role === 'categorical') selectedCategorical.push(item.dataset.name);
                 });
-                if(selectedNumeric.length === 0 && selectedCategorical.length === 0) { 
-                    showToast("Arraste features para o modelo!", true); 
-                    return; 
-                }
                 
                 const algo = document.querySelector('input[name="algo"]:checked').value;
                 const lossMethod = document.querySelector('input[name="loss_method"]:checked').value;
@@ -655,23 +707,26 @@
                 const isOptuna = (mode === 'optuna');
                 let hyperparams = {};
                 
-                const paramNames = lossMethod === 'logloss' ? ['depth', 'learning_rate', 'l2_leaf_reg', 'scale_pos_weight'] : ['depth', 'learning_rate', 'l2_leaf_reg', 'focal_alpha', 'focal_gamma'];
+                const paramsConfig = hpConf[algo];
                 
-                paramNames.forEach(id => {
+                paramsConfig.forEach(p => {
                     if(isOptuna) {
-                        hyperparams[id] = [
-                            parseFloat(document.getElementById(`hp_${id}_min`).value), 
-                            parseFloat(document.getElementById(`hp_${id}_max`).value)
+                        hyperparams[p.id] = [
+                            parseFloat(document.getElementById(`hp_${p.id}_min`).value), 
+                            parseFloat(document.getElementById(`hp_${p.id}_max`).value)
                         ];
                     } else {
-                        hyperparams[id] = parseFloat(document.getElementById(`hp_${id}`).value);
+                        hyperparams[p.id] = parseFloat(document.getElementById(`hp_${p.id}`).value);
                     }
                 });
 
+                const targetCol = document.getElementById('cfg-target').value;
+                const groupCol = document.getElementById('cfg-group').value;
+
                 const payload = {
                     pipeline_name: "ifrs9_credit_origination", 
-                    target_column: document.getElementById('cfg-target').value,
-                    group_column: document.getElementById('cfg-group').value,
+                    target_column: targetCol,
+                    group_column: groupCol,
                     numeric_features: selectedNumeric, 
                     categorical_features: selectedCategorical,
                     algorithm: algo,

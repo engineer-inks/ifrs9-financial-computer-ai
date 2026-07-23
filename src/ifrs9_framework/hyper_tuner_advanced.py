@@ -2,19 +2,23 @@ import random
 import gc
 import numpy as np
 import catboost as cb
+import lightgbm as lgb
+from interpret.glassbox import ExplainableBoostingClassifier
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import f1_score, brier_score_loss
 import logging
 
 logger = logging.getLogger("IFRS9_Engine.Tuner")
 
-def otimizar_hiperparametros_grid_search(X_train, y_train, X_val, y_val, cat_indices, config, get_focal_loss_obj_func, recalibrar_func, metodo='logloss'):
+def otimizar_hiperparametros_grid_search(X_train, y_train, X_val, y_val, cat_indices, config, get_focal_loss_obj_func, recalibrar_func, metodo='logloss', tracker=None):
     """
     v89/v90: Grid Search Híbrido com suporte a Focal Loss e Logloss padrão.
     Integra calibração analítica (Shift) e fábrica de objetivos JIT.
     """
+    msg_init = f"--- INICIANDO GRID SEARCH [{metodo.upper()}] ---"
     logger.info("="*80)
-    logger.info(f"--- INICIANDO GRID SEARCH [{metodo.upper()}] ---")
+    logger.info(msg_init)
+    if tracker: tracker.update_node("step_3", "running", msg_init)
     
     # 1. CONFIGURAÇÃO DE ESPAÇO DE BUSCA FIXO
     depths = config.get('depths', [4, 6, 8])
@@ -38,7 +42,9 @@ def otimizar_hiperparametros_grid_search(X_train, y_train, X_val, y_val, cat_ind
         peso_sqrt = np.sqrt(base_weight)
         
         pesos_grid = sorted(list(set([base_weight * f for f in fatores] + [peso_sqrt])))
-        logger.info(f"⚖️ Modo Logloss | Peso Base: {base_weight:.2f} | Peso Sqrt: {peso_sqrt:.2f}")
+        msg_logloss = f"⚖️ Modo Logloss | Peso Base: {base_weight:.2f} | Peso Sqrt: {peso_sqrt:.2f}"
+        logger.info(msg_logloss)
+        if tracker: tracker.update_node("step_3", "running", msg_logloss)
         
         grid_params = [(w, None, d, lr, l2) for w in pesos_grid for d in depths for lr in lrs for l2 in l2_regs]
 
@@ -46,6 +52,8 @@ def otimizar_hiperparametros_grid_search(X_train, y_train, X_val, y_val, cat_ind
     melhores_params = None
     total_comb = len(grid_params)
     count = 0
+    
+    algo = config.get('algorithm', 'catboost').lower()
     
     # 3. LOOP UNIFICADO
     for p1, p2, d, lr, l2 in grid_params:
@@ -62,20 +70,40 @@ def otimizar_hiperparametros_grid_search(X_train, y_train, X_val, y_val, cat_ind
             scale_pos_weight = final_weight
             
         params = {
-            'depth': d, 'learning_rate': lr, 'l2_leaf_reg': l2,
-            'iterations': 1000, 'eval_metric': 'F1',
             'random_state': config.get('random_state', 42),
-            'logging_level': 'Silent', 'thread_count': -1,
-            'loss_function': loss_fn,
-            'scale_pos_weight': scale_pos_weight
+            'learning_rate': lr
         }
         
         try:
-            model = cb.CatBoostClassifier(**params, cat_features=cat_indices)
-            model.fit(X_train, y_train, eval_set=(X_val, y_val), early_stopping_rounds=20, verbose=False)
+            # INSTANCIAÇÃO DINÂMICA DENTRO DO TUNER
+            if algo == 'catboost':
+                params.update({'depth': d, 'l2_leaf_reg': l2, 'iterations': 100, 'eval_metric': 'F1', 'logging_level': 'Silent', 'thread_count': -1, 'loss_function': loss_fn, 'scale_pos_weight': scale_pos_weight})
+                model = cb.CatBoostClassifier(**params, cat_features=cat_indices)
+                model.fit(X_train, y_train, eval_set=(X_val, y_val), early_stopping_rounds=20, verbose=False)
+                best_iter = model.best_iteration_
+                
+            elif algo == 'lightgbm':
+                params.update({'max_depth': d, 'n_estimators': 100, 'scale_pos_weight': scale_pos_weight, 'verbose': -1})
+                model = lgb.LGBMClassifier(**params)
+                model.fit(X_train, y_train, eval_set=[(X_val, y_val)], categorical_feature=cat_indices)
+                best_iter = model.best_iteration_
+                
+            elif algo == 'ebm':
+                # Mapeando os parametros do grid para o EBM
+                mb = int(d * 32) # Exemplo: transformando depth em max_bins (64 a 256)
+                inter = int(l2) # Exemplo: transformando l2 em interações
+                params.update({'max_bins': mb, 'interactions': inter})
+                model = ExplainableBoostingClassifier(**params)
+                sample_w = np.where(y_train == 1, final_weight, 1.0)
+                model.fit(X_train, y_train, sample_weight=sample_w)
+                best_iter = 100
             
             # --- RECALIBRAÇÃO E MÉTRICAS ---
-            y_prob_raw = model.predict_proba(X_val, ntree_end=model.best_iteration_)[:, 1]
+            if algo == 'catboost':
+                y_prob_raw = model.predict_proba(X_val, ntree_end=best_iter)[:, 1]
+            else:
+                y_prob_raw = model.predict_proba(X_val)[:, 1]
+                
             y_prob_calib = recalibrar_func(y_prob_raw, final_weight)
             
             val_brier = brier_score_loss(y_val, y_prob_calib)
@@ -91,13 +119,15 @@ def otimizar_hiperparametros_grid_search(X_train, y_train, X_val, y_val, cat_ind
             combined_score = val_f1 - (val_brier * 2)
             
             if count % 20 == 0 or combined_score > best_combined_score:
-                logger.info(f"[{count}/{total_comb}] W_Efetivo:{final_weight:.2f} | F1:{val_f1:.4f} | Brier:{val_brier:.4f}")
+                msg_iter = f"[{count}/{total_comb}] W_Efetivo:{final_weight:.2f} | F1:{val_f1:.4f} | Brier:{val_brier:.4f}"
+                logger.info(msg_iter)
+                if tracker: tracker.update_node("step_3", "running", msg_iter)
                 
             if combined_score > best_combined_score:
                 best_combined_score = combined_score
                 melhores_params = params.copy()
                 melhores_params.update({
-                    'iterations': model.best_iteration_,
+                    'iterations': best_iter,
                     'w_train_calculado': final_weight,
                     'peso_efetivo': final_weight,
                     'metodo': metodo
@@ -106,15 +136,21 @@ def otimizar_hiperparametros_grid_search(X_train, y_train, X_val, y_val, cat_ind
                 if metodo == 'focal':
                     melhores_params.update({'alpha': alpha, 'gamma': gamma})
                     
-                logger.info(f"   🌟 TOP: F1 {val_f1:.4f} | Brier: {val_brier:.5f} | PD: {pd_medio:.4%}")
+                msg_top = f"   🌟 TOP: F1 {val_f1:.4f} | Brier: {val_brier:.5f} | PD: {pd_medio:.4%}"
+                logger.info(msg_top)
+                if tracker: tracker.update_node("step_3", "running", msg_top)
                 
                 # META ATINGIDA: Encerramento antecipado
                 if val_f1 >= F1_TARGET and val_brier < 0.02:
-                    logger.info("🎯 Meta atingida. Encerrando o Grid Search.")
+                    msg_meta = "🎯 Meta atingida. Encerrando o Grid Search."
+                    logger.info(msg_meta)
+                    if tracker: tracker.update_node("step_3", "running", msg_meta)
                     return melhores_params
 
         except Exception as e:
-            logger.error(f"❌ Erro na iteração {count}: {str(e)}")
+            msg_err = f"❌ Erro na iteração {count}: {str(e)}"
+            logger.error(msg_err)
+            if tracker: tracker.update_node("step_3", "running", msg_err)
             continue
         finally:
             if 'model' in locals(): del model
