@@ -1,4 +1,4 @@
-# Imagem base otimizada com PyTorch e CUDA instalados
+# Imagem base com PyTorch e CUDA
 FROM pytorch/pytorch:2.1.2-cuda12.1-cudnn8-runtime
 
 # Variáveis de ambiente para otimizar o Python
@@ -17,20 +17,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /workspace
 
 COPY requirements.txt .
-# Atualiza o pip
+# Atualiza o pip e instala as dependências
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# Copia os arquivos de configuração do pacote primeiro (aproveita o cache do Docker)
+# Copia os arquivos de configuração do pacote
 COPY pyproject.toml README.md ./
 COPY src/ src/
 
-# Instala o nosso pacote em modo editável (-e) com as dependências de desenvolvimento
-# Isso significa que qualquer alteração no código na sua máquina reflete instantaneamente no contêiner
+# Instala o nosso pacote em modo editável (-e)
 RUN pip install -e .[dev]
 
-# Expõe as portas que usaremos para o Jupyter (8888) e MLflow (5000)
-EXPOSE 8888 5000
-
-# Comando padrão ao iniciar o contêiner (inicia o bash)
-CMD ["bash"]
+# O Render injeta dinamicamente a variável de ambiente $PORT.
+# O comando abaixo garante que o Uvicorn vai rodar na porta correta, seja no Render ou na sua máquina local (onde o padrão será 8000).
+CMD ["sh", "-c", "uvicorn src.ifrs9_framework.api:app --host 0.0.0.0 --port ${PORT:-8000}"]
