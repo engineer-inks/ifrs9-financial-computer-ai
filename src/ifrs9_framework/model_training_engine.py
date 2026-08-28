@@ -140,7 +140,12 @@ def search_hyperparameters_and_training_model(config, data_dict, tuner_func, get
     else:
         X_train_sample, y_train_sample = X_train_processed, y_train
         
-    if tracker: tracker.update_node("step_3", "running", "Iniciando Otimização de Hiperparâmetros...")
+        # ---> NOVO LOG DE QUANTIDADE DE LINHAS AQUI <---
+        msg_amostra = f"📊 Base enviada para treino: {len(X_train_sample):,} linhas e {X_train_sample.shape[1]} variáveis."
+        logger.info(msg_amostra)
+        if tracker: tracker.update_node("step_3", "running", msg_amostra)
+        
+        if tracker: tracker.update_node("step_3", "running", "Iniciando Otimização de Hiperparâmetros...")
     melhores_params = tuner_func(
         X_train_sample, y_train_sample, X_val_processed, y_val, 
         cat_indices, config, get_focal_loss_obj_func, recalibrar_func, metodo=metodo, tracker=tracker

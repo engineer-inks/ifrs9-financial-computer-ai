@@ -465,6 +465,9 @@
             }
 
             try {
+                // NOVIDADE: Salva as configurações automaticamente antes de rodar!
+                await saveConfigToAPI();
+                
                 switchTab('execution');
                 nodeStartTimes = {}; // Limpa contadores vivos
                 startPolling();
@@ -495,6 +498,13 @@
             btn.innerHTML = 'A conectar...'; btn.disabled = true;
             placeholder.classList.add('hidden'); spinner.classList.remove('hidden');
             tableCont.classList.add('hidden'); stats.classList.add('hidden');
+
+            // LÓGICA NOVA: Limpa as variáveis antigas caso o usuário carregue uma nova base
+            const availableList = document.getElementById('available-list');
+            const selectedList = document.getElementById('selected-list');
+            if (availableList) availableList.innerHTML = '';
+            if (selectedList) selectedList.innerHTML = '';
+            resetChartToZero();
 
             try {
                 const filePath = document.getElementById('file_path').value;
@@ -536,7 +546,6 @@
                     }
                 });
                 showToast("Base carregada com sucesso!");
-                // A EXTRAÇÃO DE ESQUEMA FOI REMOVIDA DAQUI (MOVIDA PARA ABA 1)
             } catch (e) {
                 showToast(`Falha: ${e.message}`, true);
                 btn.innerHTML = `<span>Tentar Novamente</span>`;
@@ -547,7 +556,14 @@
         async function fetchDatasetSchema() {
             const btn = document.getElementById('btn-analyze-schema');
             const list = document.getElementById('available-list');
+            const selectedList = document.getElementById('selected-list');
             const spinner = document.getElementById('schema-spinner');
+            
+            // TRAVA ANTIDUPLICAÇÃO: Verifica se já existem features nas listas
+            if ((list && list.children.length > 0) || (selectedList && selectedList.children.length > 0)) {
+                showToast("O esquema já foi analisado e as variáveis estão carregadas.");
+                return; // Encerra a função silenciosamente
+            }
             
             if(btn) { btn.disabled = true; btn.innerHTML = 'Analisando...'; }
             if(spinner) spinner.classList.remove('hidden');
