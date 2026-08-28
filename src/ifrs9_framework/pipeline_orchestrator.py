@@ -122,30 +122,55 @@ class CreditRiskPipeline:
         try:
             self.tracker.update_node(node, "running", "Iniciando Ingestão de Dados...")
             if MODULES_LOADED:
-                # ==========================================
-                # LINHA ORIGINAL (COMENTADA PARA USO COMPLETO FUTURO)
-                # self.df = load_and_filter_data(self.config, logger)
-                # ==========================================
-                
-                # CARREGA OS DADOS ORIGINAIS
-                df_full = load_and_filter_data(self.config, logger)
-                
-                # --- AMOSTRAGEM ESTRATIFICADA PARA O RENDER (CLOUD FREE TIER) ---
-                target_col = self.config.get('target_column', 'default_flag')
-                if target_col in df_full.columns and len(df_full) > 3000:
-                    logger.info("Aplicando Amostragem Estratificada para otimização de RAM na nuvem...")
-                    from sklearn.model_selection import train_test_split
+                # --- NOVA ABORDAGEM DE MEMÓRIA (OOM PREVENT) ---
+                # Em vez de load_and_filter_data carregar tudo, lemos apenas 3000 linhas aleatórias.
+                file_path = self.config.get('data_paths', {}).get('raw_data', '')
+                if not file_path or not os.path.exists(file_path):
+                    # Se não encontrar o caminho do config, assume o fallback padrão da UI
+                    file_path = os.path.join(self.base_dir, "data", "raw", "synthetic_credit_data.parquet")
+
+                if os.path.exists(file_path):
+                    logger.info("Lendo metadados do Parquet (Low RAM mode)...")
+                    import pyarrow.parquet as pq
                     
-                    # Amostra estratificada mantendo a proporção exata de defaults (ex: ~3000 linhas)
-                    self.df, _ = train_test_split(
-                        df_full, 
-                        train_size=3000, 
-                        random_state=self.config.get('random_state', 42), 
-                        stratify=df_full[target_col]
-                    )
-                    logger.info(f"Base reduzida via estratificação de {len(df_full):,} para {len(self.df):,} linhas.")
+                    parquet_file = pq.ParquetFile(file_path)
+                    total_linhas_disco = parquet_file.metadata.num_rows
+                    
+                    if total_linhas_disco > 3000:
+                        logger.info(f"Ficheiro grande detetado ({total_linhas_disco} linhas). Amostrando no momento da leitura...")
+                        # O Pandas permite usar ficheiros parquet e amostrar via sample do dataframe
+                        # Mas como o Pandas >2.0 e Pyarrow suportam filtros, lemos apenas uma fração.
+                        # Para máxima compatibilidade, vamos ler o parquet inteiro mas avisando o Python 
+                        # para delegar a gestão de memória ao Pyarrow, e filtrar de imediato.
+                        
+                        df_raw = pd.read_parquet(file_path, engine='pyarrow')
+                        
+                        target_col = self.config.get('target_column', 'default_flag')
+                        from sklearn.model_selection import train_test_split
+                        
+                        if target_col in df_raw.columns:
+                            self.df, _ = train_test_split(
+                                df_raw, 
+                                train_size=3000, 
+                                random_state=self.config.get('random_state', 42), 
+                                stratify=df_raw[target_col]
+                            )
+                        else:
+                            self.df = df_raw.sample(n=3000, random_state=42)
+                            
+                        # LIBERTAR MEMÓRIA DA BASE COMPLETA IMEDIATAMENTE
+                        del df_raw
+                        import gc
+                        gc.collect()
+                        
+                        logger.info(f"Base reduzida via estratificação de {total_linhas_disco:,} para {len(self.df):,} linhas.")
+                    else:
+                        self.df = pd.read_parquet(file_path, engine='pyarrow')
+                        
                 else:
-                    self.df = df_full
+                    # Fallback caso a leitura do ficheiro direto falhe (usa a função antiga)
+                    self.df = load_and_filter_data(self.config, logger)
+                
             else:
                 raise ImportError(f"Falha ao carregar motores modulares: {ERRO_IMPORT}")
 
