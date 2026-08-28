@@ -1,56 +1,78 @@
+# 🚀 IFRS 9 Financial Computer AI & MLOps Engine
 
-# Integração da Interface MLOps na Arquitetura
+<div align="center">
 
-O arquivo que geramos na nossa última iteração chama-se  **`config_ui.html`** . Ele é a materialização da sua ideia de um "Painel Self-Service" para o Cientista de Dados.
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![CatBoost](https://img.shields.io/badge/CatBoost-ML-orange?style=for-the-badge&logo=databricks&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Container-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![MLflow](https://img.shields.io/badge/MLflow-Tracking-0194E2?style=for-the-badge&logo=mlflow&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)
 
-Aqui estão as respostas detalhadas para as suas dúvidas sobre como vamos integrar isso na nossa esteira.
+*Plataforma End-to-End Self-Service de MLOps para Modelagem de Risco de Crédito (IFRS 9).*
 
-### 1. Onde colocar o arquivo na nossa Arquitetura?
+</div>
 
-Para mantermos as diretrizes de código limpo, não vamos misturar arquivos HTML com scripts de Machine Learning. Vamos criar uma nova pasta na raiz do projeto chamada `ui/` ou `frontend/`. A nossa árvore ficará assim:
+---
 
-```
+## 📌 Visão Geral da Arquitetura
+
+Este repositório implementa uma arquitetura robusta para ingestão, engenharia de features, otimização de hiperparâmetros (AutoML via Grid Search/Optuna) e auditoria regulatória de modelos de Probabilidade de Default (PD) sob as normas do **IFRS 9**.
+
+A solução desacopla o motor matemático da interface gráfica através de uma abordagem orientada a serviços (*Microservices & SPA Monolithic Frontend*), garantindo governança, reprodutibilidade e facilidade de uso para cientistas de dados e analistas de risco.
+
+---
+
+## 📂 Estrutura de Diretórios
+
+Para manter os princípios de código limpo e separação de responsabilidades, a árvore do projeto está organizada da seguinte forma:
+
+```text
 ifrs9-financial-computer-ai/
 │
-├── src/                      # Scripts Python (features, models, orchestrator)
-├── config/                   # Onde mora o .env e o config.yaml
+├── src/                      # Núcleo de Machine Learning (features, models, orchestrator)
+├── config/                   # Configurações de ambiente (.env e config.yaml)
 │
-├── ui/                       # A NOVA PASTA PARA A INTERFACE
-│   ├── config_ui.html        # (O painel de configuração que criamos)
-│   ├── vertex_pipeline.html  # (O visualizador do Dataflow que criamos antes)
-│   └── dashboard_results.html# (O futuro painel com gráficos SHAP, ROC, etc.)
+├── ui/                       # Camada de Apresentação (Frontend SPA)
+│   ├── config_ui.html        # Painel Self-Service de Configuração e Feature Selection
+│   ├── vertex_pipeline.html  # Visualizador de Dataflow e Logs de Execução
+│   └── dashboard_results.html# Dashboard Executivo (Curva ROC, Matriz de Confusão, Hosmer-Lemeshow)
 │
-├── docker-compose.yml
-└── Dockerfile
+├── docker-compose.yml        # Orquestração de containers
+└── Dockerfile                # Imagem oficial da aplicação FastAPI + ML
 ```
 
-### 2. Pode ser tudo num único arquivo HTML?
+⚙️ Abordagem Tecnológica e Design System
 
-**Sim, absolutamente.** A abordagem que usamos (HTML puro + Tailwind via CDN + JavaScript embutido) chama-se  *Single Page Application (SPA) Monolítica* .
+1. Por que uma Interface Monolítica (SPA via CDN)?
+Optamos por utilizar HTML puro estruturado com Tailwind CSS (via CDN) e JavaScript embutido. Para um painel interno de engenharia de risco em ambientes bancários, essa abordagem elimina a complexidade de build de frameworks pesados (como React ou Angular), mantendo o arquivo leve, rápido e auditável diretamente em qualquer navegador.
 
-Para um painel interno de um banco focado em MLOps, essa é a melhor abordagem. Você não precisa de configurações complexas de Node.js, React ou Angular. O arquivo é leve, rápido e qualquer membro da equipe pode abri-lo diretamente no navegador para testar o layout.
+1. O Fluxo de Integração (Frontend ⇄ Backend)
+Como navegadores possuem restrições de segurança que impedem o acesso direto de escrita em arquivos locais do servidor, implementamos uma API Ponte (FastAPI):
 
-### 3. Como vai funcionar a interação? Ele lê/escreve o `.yml` sozinho?
+Ação do Usuário: O analista interage com o painel visual (config_ui.html), seleciona features e define o algoritmo (CatBoost, LightGBM, EBM).
 
-Aqui está o grande "pulo do gato" da engenharia de software. **O HTML rodando no seu navegador (Frontend) não tem permissão de segurança para salvar ou ler arquivos diretamente no disco do seu computador.** Portanto, o `config_ui.html` sozinho não consegue alterar o `config.yaml`. Para fazer essa mágica acontecer, nós não precisamos de um Banco de Dados novo; nós precisamos de uma  **API "Ponte"** .
+Requisição HTTP (POST): O frontend dispara os parâmetros estruturados para a API em Python.
 
-**O Fluxo Profissional (O que vamos construir):**
+Persistência via IaC (ML as Code): O micro-servidor FastAPI recebe o payload e atualiza dinamicamente o arquivo config.yaml no disco.
 
-1. **O Cientista usa a Tela:** Você entra no `config_ui.html`, seleciona as colunas, marca o Optuna e clica em "Salvar Configuração".
-2. **O HTML faz um POST (Envio):** O JavaScript do nosso HTML pega essas opções e envia via rede (uma requisição HTTP POST).
-3. **A Ponte em Python (FastAPI):** Vamos adicionar um micro-servidor muito leve em Python (usando a biblioteca `FastAPI` ou `Flask` dentro do nosso Docker). Esse servidor fica "escutando".
-4. **Python escreve o YAML:** O `FastAPI` recebe os dados do HTML e **ele sim** (pois é um script rodando no servidor) sobrescreve o arquivo `config.yaml` real no disco.
-5. **Gatilho de Execução:** Logo após salvar o YAML, o próprio `FastAPI` pode rodar um comando chamando o nosso `pipeline_orchestrator.py` para iniciar o treinamento.
+Gatilho de Orquestração: Imediatamente após a persistência, o backend aciona o pipeline_orchestrator.py para iniciar o ciclo de treino.
 
-### Precisamos adicionar um Banco de Dados (BD) por trás?
+📊 Governança e Armazenamento (Storage Strategy)
+Gerenciamento de Configuração: O próprio arquivo yaml atua como a fonte da verdade (Single Source of Truth), garantindo rastreabilidade de infraestrutura como código.
 
-Para guardar as configurações:  **NÃO** .
-O próprio arquivo `config.yaml` é a nossa "fonte da verdade". Usar arquivos YAML como banco de dados de configuração é o que chamamos de *Infrastructure as Code (IaC)* ou, no nosso caso,  *ML as Code* .
+Histórico de Experimentos: O rastreamento de métricas e artefatos de modelos é delegado nativamente ao MLflow (mlflow.db), integrado ao ecossistema Docker da aplicação.
 
-Para guardar o histórico de treinamentos e os logs:  **NÃO PRECISAMOS DE UM NOVO** , pois nós já temos o **MLflow** (`mlflow.db`) rodando no seu Docker! O MLflow é o nosso banco de dados oficial de MLOps.
+Metrics Store: Os relatórios de performance final (incluindo curvas ROC, importância de variáveis e testes de aderência Hosmer-Lemeshow) são exportados de forma estática para JSON, alimentando o dashboard executivo.
 
-### Resumo do Próximo Passo de Engenharia
+🚀 Próximos Passos de Engenharia
+[x] Conexão e preview de datasets de portfólio em formato .parquet.
 
-Nossa interface visual (`config_ui.html`) está pronta esteticamente. O nosso motor (`pipeline_orchestrator.py`) está pronto matematicamente.
+[x] Painel de arrastar e soltar (Drag & Drop) para Feature Engineering.
 
-O que falta para conectarmos os dois mundos é criarmos um arquivo chamado `api.py` (usando FastAPI). Ele será o carteiro que pega as opções que o Cientista clicou no HTML e escreve no `config.yaml` para o Orquestrador rodar.
+[ ] Conclusão do microsserviço api.py utilizando FastAPI para fechar o ciclo de escrita automática do arquivo de configuração.
+
+[ ] Expansão dos testes de estresse para validação cruzada Out-of-Time (OOT).
+
+✒️ Autor
+Desenvolvido com foco em Engenharia de Dados, Machine Learning e Arquitetura MLOps.
