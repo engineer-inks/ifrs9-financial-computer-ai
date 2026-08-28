@@ -458,24 +458,33 @@
         }
 
         async function triggerPipeline() {
-            // TRAVA DE SEGURANÇA NO TREINAMENTO
+            // TRAVA DE SEGURANÇA (Verifica se moveu as variáveis)
             if (!todasVariaveisForamMovidas()) {
                 alert("⚠️ Configuração Incompleta\n\nArraste TODAS as variáveis para a Receita do Modelo na aba '1. Recipe & Features' antes de iniciar o treinamento.");
                 return;
             }
 
+            // Tenta salvar no backend. Se a função retornar falso (der erro), ele interrompe e nem tenta rodar a pipeline.
+            const configSalva = await saveConfigToAPI();
+            if (!configSalva) return; 
+
             try {
-                // NOVIDADE: Salva as configurações automaticamente antes de rodar!
-                await saveConfigToAPI();
-                
                 switchTab('execution');
                 nodeStartTimes = {}; // Limpa contadores vivos
                 startPolling();
+                
                 const response = await fetch(`${API_URL}/run-pipeline`, { method: 'POST' });
-                if(!response.ok) throw new Error("Erro ao iniciar pipeline.");
+                
+                if(!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || "Erro 500 no endpoint run-pipeline.");
+                }
+                
                 showToast("Pipeline acionada no servidor!");
             } catch (error) {
-                showToast("Erro ao iniciar pipeline.", true);
+                // RADAR DE ERRO 2
+                clearInterval(pipelineInterval); // Para de tentar ler os "logs fantasmas"
+                alert(`FALHA NO BACKEND (run-pipeline):\n\n${error.message}\n\nO servidor recusou a inicialização. Verifique a tela preta de Logs lá no painel do Render.`);
             }
         }
 
@@ -786,12 +795,15 @@
                 
                 if(res.ok) {
                     showToast("Configuração salva com sucesso!");
+                    return true; // SUCESSO - Sinal verde para continuar
                 } else {
                     const errorData = await res.json();
-                    throw new Error(errorData.detail || "Erro de API.");
+                    throw new Error(errorData.detail || "Erro interno no servidor Render.");
                 }
             } catch (e) { 
-                showToast(`Falha: ${e.message}`, true); 
+                // RADAR DE ERRO 1
+                alert(`FALHA DE COMUNICAÇÃO (save-config):\n\n${e.message}\n\nVerifique os Logs do Render para ver o erro Python.`);
+                return false; // FALHA - Trava o processo
             } finally { 
                 btn.innerHTML = originalHTML; 
             }
