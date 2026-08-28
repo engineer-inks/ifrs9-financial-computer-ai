@@ -183,10 +183,14 @@ class CreditRiskPipeline:
         node = "step_3"
         try:
             algo_name = self.config.get('algorithm', 'catboost').upper()
+            
+            # ATUALIZA O TÍTULO DO NODE DINAMICAMENTE NA UI
+            self.tracker.state["nodes"][node]["title"] = f"3. {algo_name} & Tuning"
             self.tracker.update_node(node, "running", f"Iniciando Otimização e Treino ({algo_name})...")
             
-            tuning_cfg = self.config.get('model_training', {}).get('hyperparameter_tuning', {})
-            is_optuna = tuning_cfg.get('auto_tune', False)
+            # LÊ AS CONFIGURAÇÕES CORRETAMENTE DA UI
+            is_optuna = self.config.get('auto_tune', False)
+            loss_method = self.config.get('loss_function', 'logloss')
             
             self.model_final, self.melhores_params = search_hyperparameters_and_training_model(
                 config=self.config,
@@ -195,12 +199,12 @@ class CreditRiskPipeline:
                 get_focal_loss_obj_func=get_focal_loss_obj,
                 recalibrar_func=recalibrar_probabilidade_shift,
                 sample_base=True,
-                search_method='grid' if is_optuna else 'focal',
-                metodo='logloss',
+                search_method='grid' if is_optuna else 'manual',
+                metodo=loss_method,
                 tracker=self.tracker
             )
             
-            self.tracker.update_node(node, "success", "Modelo otimizado e treinado com sucesso.")
+            self.tracker.update_node(node, "success", f"Modelo {algo_name} treinado com sucesso.")
         except Exception as e:
             err_msg = f"CRASH NO STEP 3: {str(e)}\n{traceback.format_exc()}"
             logger.error(err_msg)
@@ -290,8 +294,9 @@ class CreditRiskPipeline:
             
             metrics_dir = self.config.get('metrics', os.path.join(self.base_dir, "outputs"))
             os.makedirs(metrics_dir, exist_ok=True)
+            algo_json = self.config.get('algorithm', 'catboost').upper()
             with open(os.path.join(metrics_dir, "metrics.json"), 'w', encoding='utf-8') as f:
-                json.dump({"status": "Success", "model": "CatBoost_IFRS9_OOF"}, f)
+                json.dump({"status": "Success", "model": f"{algo_json}_IFRS9_OOF"}, f)
                 
             self.tracker.finish_pipeline("completed")
             logger.info("CICLO COMPLETO FINALIZADO COM SUCESSO!")

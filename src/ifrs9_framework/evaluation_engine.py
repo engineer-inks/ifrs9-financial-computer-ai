@@ -88,7 +88,10 @@ def executar_teste_aderencia_buckets(y_true, y_prob, n_bins=10):
     logger.info("================================================================================\n")
     return stats_bucket
 
-def salvar_pipeline_completo(config, preprocessor, model, threshold, feature_names, cat_indices, scale_pos_weight, isotonic_model, nome_arquivo="pipeline_modelagem_rede_v1.joblib"):
+def salvar_pipeline_completo(config, preprocessor, model, threshold, feature_names, cat_indices, scale_pos_weight, isotonic_model):
+    algo_name = config.get('algorithm', 'catboost').lower()
+    nome_arquivo = f"pipeline_{algo_name}_v1.joblib"
+    
     full_pipeline = Pipeline(steps=[('preprocessor', preprocessor), ('classifier', model)])
     full_pipeline.calibration_meta_ = {
         'scale_pos_weight': scale_pos_weight, 'scalar_factor': 1.0,

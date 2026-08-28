@@ -24,24 +24,28 @@ def otimizar_hiperparametros_grid_search(X_train, y_train, X_val, y_val, cat_ind
     if algo == 'ebm':
         interactions = hp.get('interactions', [0, 10])
         if not isinstance(interactions, list): interactions = [interactions]
-        
         max_bins = hp.get('max_bins', [64, 256])
         if not isinstance(max_bins, list): max_bins = [max_bins]
-        
         lrs = hp.get('learning_rate', [0.01, 0.05])
         if not isinstance(lrs, list): lrs = [lrs]
-        
         grid_params_base = [(mb, inter, lr) for mb in max_bins for inter in interactions for lr in lrs]
-    else:
-        depths = hp.get('depth', hp.get('max_depth', [4, 6]))
+        
+    elif algo == 'lightgbm':
+        depths = hp.get('max_depth', [4, 6])
         if not isinstance(depths, list): depths = [depths]
-            
+        leaves = hp.get('num_leaves', [31, 50])
+        if not isinstance(leaves, list): leaves = [leaves]
         lrs = hp.get('learning_rate', [0.03, 0.05])
         if not isinstance(lrs, list): lrs = [lrs]
-            
+        grid_params_base = [(d, l, lr) for d in depths for l in leaves for lr in lrs]
+        
+    else: # catboost
+        depths = hp.get('depth', [4, 6])
+        if not isinstance(depths, list): depths = [depths]
+        lrs = hp.get('learning_rate', [0.03, 0.05])
+        if not isinstance(lrs, list): lrs = [lrs]
         l2_regs = hp.get('l2_leaf_reg', [3, 10])
         if not isinstance(l2_regs, list): l2_regs = [l2_regs]
-            
         grid_params_base = [(d, l2, lr) for d in depths for l2 in l2_regs for lr in lrs]
 
     F1_TARGET = config.get('f1_target', 0.33)
@@ -104,8 +108,8 @@ def otimizar_hiperparametros_grid_search(X_train, y_train, X_val, y_val, cat_ind
                 y_prob_raw = model.predict_proba(X_val, ntree_end=best_iter)[:, 1]
                 
             elif algo == 'lightgbm':
-                d, l2, lr = param_a, param_b, param_c
-                params.update({'max_depth': int(d), 'learning_rate': lr, 'n_estimators': 100, 'scale_pos_weight': scale_pos_weight, 'verbose': -1})
+                d, leaves, lr = param_a, param_b, param_c
+                params.update({'max_depth': int(d), 'num_leaves': int(leaves), 'learning_rate': lr, 'n_estimators': 100, 'scale_pos_weight': scale_pos_weight, 'verbose': -1})
                 model = lgb.LGBMClassifier(**params)
                 model.fit(X_train, y_train, eval_set=[(X_val, y_val)], categorical_feature=cat_indices)
                 best_iter = model.best_iteration_
@@ -132,10 +136,16 @@ def otimizar_hiperparametros_grid_search(X_train, y_train, X_val, y_val, cat_ind
             pd_medio = np.mean(y_prob_calib)
             
             if pd_medio > PD_MAX_LIMIT:
-                msg_kill = f"⚠️ Kill Switch: PD de {pd_medio:.2%} é irreal. Pulando iteração..."
-                logger.warning(msg_kill)
-                if tracker: tracker.update_node("step_3", "running", msg_kill)
-                continue
+                msg_kill = f"⚠️ Kill Switch: PD de {pd_medio:.2%} é alto. "
+                if total_comb > 1:
+                    msg_kill += "Pulando iteração..."
+                    logger.warning(msg_kill)
+                    if tracker: tracker.update_node("step_3", "running", msg_kill)
+                    continue
+                else:
+                    msg_kill += "Ignorado por ser Modo Manual."
+                    logger.warning(msg_kill)
+                    if tracker: tracker.update_node("step_3", "running", msg_kill)
                 
             combined_score = val_f1 - (val_brier * 2)
             

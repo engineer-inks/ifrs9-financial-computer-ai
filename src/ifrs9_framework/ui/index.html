@@ -68,7 +68,7 @@
                 <span>Guardar Configuração</span>
             </button>
             <button onclick="loadConfigFromAPI()" id="btnLoad" class="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold rounded-lg shadow flex justify-center items-center space-x-2 transition-colors opacity-50 cursor-not-allowed" disabled>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                 <span>Carregar Configuração</span>
             </button>
             <button onclick="triggerPipeline()" id="btnRun" class="w-full py-3 bg-green-600 hover:bg-green-500 text-white font-semibold rounded-lg shadow-lg flex justify-center items-center space-x-2 transition-colors opacity-50 cursor-not-allowed" disabled>
@@ -80,11 +80,10 @@
 
     <main class="flex-1 overflow-hidden relative">
 
-        <!-- TAB 0: DATA SOURCE -->
         <div id="tab-source" class="max-w-6xl mx-auto space-y-6 block p-8 overflow-y-auto h-full">
             <div class="mb-6">
                 <h2 class="text-2xl font-bold text-slate-800">Conexão de Dados (Ingestão)</h2>
-                <p class="text-slate-500 text-sm mt-1">Insira o caminho da base de dados de portfólio de crédito para mapeamento automático.</p>
+                <p class="text-slate-500 text-sm mt-1">Insira o caminho da base de dados de portfólio de crédito para carregamento local.</p>
             </div>
             <div class="grid grid-cols-3 gap-6">
                 <div class="col-span-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col space-y-6">
@@ -105,8 +104,8 @@
                     </div>
                     <div class="mt-auto">
                         <button onclick="connectAndPreview()" id="btn-connect" class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-lg shadow flex justify-center items-center space-x-2 transition-colors">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
-                            <span>Conectar e Analisar Esquema</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                            <span>Conectar Base de Dados</span>
                         </button>
                     </div>
                 </div>
@@ -136,12 +135,11 @@
             </div>
         </div>
 
-        <!-- TAB 1: CONSTRUIR BASE -->
         <div id="tab-data" class="max-w-7xl mx-auto space-y-6 hidden p-8 overflow-y-auto h-full">
             <div class="mb-6 flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div>
                     <h2 class="text-xl font-bold text-slate-800">Parâmetros Estruturais IFRS 9</h2>
-                    <p class="text-slate-500 text-sm">Defina a coluna Alvo (Target), a chave de agrupamento (Group Split) e arraste as variáveis para a receita.</p>
+                    <p class="text-slate-500 text-sm">Defina a coluna Alvo (Target), a chave de agrupamento (Group Split) e analise o esquema das variáveis.</p>
                 </div>
                 <div class="flex space-x-4">
                     <div>
@@ -161,7 +159,17 @@
                         <span>Features Disponíveis</span>
                         <span id="schema-spinner" class="hidden"><svg class="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle></svg></span>
                     </h3>
+                    
+                    <button onclick="fetchDatasetSchema()" id="btn-analyze-schema" class="mb-3 w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded shadow-sm transition-colors flex justify-center items-center space-x-2">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+                        <span>Analisar Esquema</span>
+                    </button>
+
                     <div class="flex-1 overflow-y-auto space-y-2 pr-1 dropzone rounded-lg border-2 border-transparent p-1" id="available-list" ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)"></div>
+                    
+                    <button onclick="moverTodasVariaveis()" class="mt-3 w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded shadow-sm border border-slate-200 transition-colors">
+                        Mover Todas &rarr;
+                    </button>
                 </div>
                 <div class="col-span-1 bg-blue-50 p-4 rounded-xl border border-blue-200 shadow-sm h-[520px] flex flex-col">
                     <h3 class="font-semibold text-blue-800 mb-3 border-b border-blue-200 pb-2 text-sm flex items-center">
@@ -184,7 +192,6 @@
             </div>
         </div>
 
-        <!-- TAB 2: MODEL & TUNING -->
         <div id="tab-model" class="max-w-6xl mx-auto space-y-6 hidden p-8 overflow-y-auto h-full">
             <div class="mb-6">
                 <h2 class="text-2xl font-bold text-slate-800">Model Architecture & Hyperparameters</h2>
@@ -245,7 +252,6 @@
             </div>
         </div>
 
-        <!-- TAB 3: EXECUÇÃO (DATAFLOW VERTEX) -->
         <div id="tab-execution" class="hidden h-full w-full relative bg-slate-50">
             <div class="absolute inset-0 w-2/3 canvas-bg overflow-auto p-8">
                 <svg class="absolute top-0 left-0 w-full h-full pointer-events-none z-0" id="edges-container"></svg>
@@ -285,7 +291,7 @@
         let isConnected = false;
         let pipelineInterval = null;
         let selectedNodeId = null;
-        let nodeStartTimes = {}; // Para calcular os segundos ao vivo em JS
+        let nodeStartTimes = {}; 
         
         const pipelineNodes = [
             { id: "step_1", title: "1. Ingestão de Dados", x: 40, y: 150 },
@@ -400,7 +406,7 @@
 
                 el.className = `absolute rounded-lg p-4 w-[220px] node-card cursor-pointer node-${info.status}`;
                 
-                // CRONÓMETRO VIVO JS (Tick tack sem depender de refresh server-side)
+                // CRONÓMETRO VIVO JS
                 if(info.status === 'running') {
                     if(!nodeStartTimes[nodeId]) nodeStartTimes[nodeId] = Date.now();
                     const elapsed = Math.floor((Date.now() - nodeStartTimes[nodeId]) / 1000);
@@ -427,7 +433,6 @@
             if(activeNodeId && selectedNodeId !== activeNodeId) {
                 selectNode(activeNodeId);
             } else if (activeNodeId) {
-                // Atualiza o tempo na UI se continuar rodando
                 selectNode(activeNodeId);
             }
         }
@@ -453,6 +458,12 @@
         }
 
         async function triggerPipeline() {
+            // TRAVA DE SEGURANÇA NO TREINAMENTO
+            if (!todasVariaveisForamMovidas()) {
+                alert("⚠️ Configuração Incompleta\n\nArraste TODAS as variáveis para a Receita do Modelo na aba '1. Recipe & Features' antes de iniciar o treinamento.");
+                return;
+            }
+
             try {
                 switchTab('execution');
                 nodeStartTimes = {}; // Limpa contadores vivos
@@ -525,7 +536,7 @@
                     }
                 });
                 showToast("Base carregada com sucesso!");
-                fetchDatasetSchema(); 
+                // A EXTRAÇÃO DE ESQUEMA FOI REMOVIDA DAQUI (MOVIDA PARA ABA 1)
             } catch (e) {
                 showToast(`Falha: ${e.message}`, true);
                 btn.innerHTML = `<span>Tentar Novamente</span>`;
@@ -534,8 +545,11 @@
         }
 
         async function fetchDatasetSchema() {
+            const btn = document.getElementById('btn-analyze-schema');
             const list = document.getElementById('available-list');
             const spinner = document.getElementById('schema-spinner');
+            
+            if(btn) { btn.disabled = true; btn.innerHTML = 'Analisando...'; }
             if(spinner) spinner.classList.remove('hidden');
             list.innerHTML = '';
             
@@ -556,8 +570,16 @@
                             <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase ${color}">${f.role}</span>
                         </div>`;
                 });
-            } catch(e) {}
-            finally { if(spinner) spinner.classList.add('hidden'); }
+                showToast("Esquema analisado com sucesso!");
+            } catch(e) {
+                showToast("Erro ao analisar esquema.", true);
+            } finally { 
+                if(spinner) spinner.classList.add('hidden'); 
+                if(btn) { 
+                    btn.disabled = false; 
+                    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg> <span>Analisar Esquema</span>`; 
+                }
+            }
         }
 
         function allowDrop(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drag-over'); }
@@ -572,7 +594,6 @@
             if(dropzone && el) {
                 dropzone.appendChild(el);
                 
-                // VERIFICA SE A RECEITA FICOU VAZIA APÓS O DROP
                 const recipeItems = document.getElementById('selected-list').querySelectorAll('.draggable-item');
                 if (recipeItems.length === 0) {
                     resetChartToZero();
@@ -673,6 +694,12 @@
         }
 
         function switchTab(tab) {
+            // TRAVA DE SEGURANÇA: Impede avançar se faltar variáveis
+            if ((tab === 'model' || tab === 'execution') && !todasVariaveisForamMovidas()) {
+                alert("⚠️ Configuração Incompleta\n\nPara que o Motor de Risco IFRS 9 funcione corretamente e o modelo aprenda os padrões de inadimplência, é necessário fornecer todo o contexto dos dados.\n\nAção Necessária: Arraste TODAS as variáveis da coluna 'Features Disponíveis' para o quadro 'Receita do Modelo (Ativas)'.\n\nAs próximas etapas foram bloqueadas e serão liberadas automaticamente assim que todas as variáveis estiverem na Receita.");
+                return; // Aborta a troca de aba
+            }
+
             ['source', 'data', 'model', 'execution'].forEach(t => {
                 const el = document.getElementById(`tab-${t}`);
                 if (el) el.style.display = tab === t ? 'block' : 'none';
@@ -801,6 +828,25 @@
                 showToast(`Erro: ${e.message}`, true);
             } finally {
                 btn.innerHTML = originalHTML;
+            }
+        }
+
+        // --- NOVAS FUNÇÕES DE SEGURANÇA E UX ---
+        function todasVariaveisForamMovidas() {
+            const availableList = document.getElementById('available-list');
+            return !(availableList && availableList.children.length > 0);
+        }
+
+        function moverTodasVariaveis() {
+            const availableList = document.getElementById('available-list');
+            const selectedList = document.getElementById('selected-list');
+            
+            if (availableList && selectedList && availableList.children.length > 0) {
+                while (availableList.children.length > 0) {
+                    selectedList.appendChild(availableList.children[0]);
+                }
+                resetChartToZero(); 
+                showToast("Todas as variáveis movidas para a receita!");
             }
         }
 

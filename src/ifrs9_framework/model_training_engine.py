@@ -147,7 +147,7 @@ def search_hyperparameters_and_training_model(config, data_dict, tuner_func, get
     )
     
     if melhores_params is None:
-        raise ValueError("O otimizador não encontrou parâmetros válidos.")
+        raise ValueError("O otimizador falhou no Kill Switch de PD Alto. Tente usar o Grid Search ou abaixar o Scale Pos Weight.")
 
     final_params = melhores_params.copy()
     metodo_final = final_params.pop('metodo', metodo)
