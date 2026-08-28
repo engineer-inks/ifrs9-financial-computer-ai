@@ -259,6 +259,42 @@
                         plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }
                     }
                 });
+                // 7. Tabela Hosmer-Lemeshow (Traffic Light)
+                const hlBody = document.getElementById('table-hl-body');
+                hlBody.innerHTML = '';
+                
+                const buckets = mockData.calibration.buckets;
+                const vols = mockData.calibration.volumes || Array(buckets.length).fill(3000);
+                const exp_pd = mockData.calibration.expected_pd;
+                const obs_pd = mockData.calibration.observed_pd;
+
+                buckets.forEach((bucket, i) => {
+                    const epd = exp_pd[i];
+                    const opd = obs_pd[i];
+                    // Calcula o desvio relativo entre o modelo e a realidade
+                    const diff = Math.abs(epd - opd) / epd;
+                    
+                    let statusHtml = '';
+                    if (diff <= 0.15) {
+                        statusHtml = '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold w-20 inline-block text-center">VERDE</span>';
+                    } else if (diff <= 0.25) {
+                        statusHtml = '<span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-bold w-20 inline-block text-center">WARNING</span>';
+                    } else {
+                        statusHtml = '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold w-20 inline-block text-center">VERMELHO</span>';
+                    }
+
+                    const tr = document.createElement('tr');
+                    tr.className = 'bg-white border-b hover:bg-slate-50 transition-colors';
+                    tr.innerHTML = `
+                        <td class="px-6 py-3 font-semibold text-slate-900">${bucket}</td>
+                        <td class="px-6 py-3 font-mono">${vols[i].toLocaleString('pt-BR')}</td>
+                        <td class="px-6 py-3 font-mono">${(epd * 100).toFixed(2)}%</td>
+                        <td class="px-6 py-3 font-mono text-slate-900">${(opd * 100).toFixed(2)}%</td>
+                        <td class="px-6 py-3 font-mono">${(diff * 100).toFixed(1)}%</td>
+                        <td class="px-6 py-3">${statusHtml}</td>
+                    `;
+                    hlBody.appendChild(tr);
+                });
 
             } catch (error) {
                 console.error(error);
