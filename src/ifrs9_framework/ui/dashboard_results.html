@@ -3,196 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MLOps Results & Audit Dashboard</title>
+    <title>Dashboard Executivo - IFRS 9</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; }
-        
-        /* Estilos da Tabela Traffic Light */
-        .hl-table th { @apply px-4 py-3 bg-slate-100 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider sticky top-0; }
-        .hl-table td { @apply px-4 py-3 whitespace-nowrap text-sm text-slate-700 border-b border-slate-100; }
-        .status-verde { @apply bg-green-100 text-green-700 font-bold px-3 py-1 rounded-full text-xs; }
-        .status-warning { @apply bg-yellow-100 text-yellow-700 font-bold px-3 py-1 rounded-full text-xs; }
-        .status-vermelho { @apply bg-red-100 text-red-700 font-bold px-3 py-1 rounded-full text-xs; }
+        .matrix-box { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; border-radius: 0.5rem; }
     </style>
 </head>
-<body class="h-screen w-screen flex text-slate-800 overflow-hidden">
+<body class="text-slate-800 h-screen overflow-y-auto">
 
-    <!-- Sidebar -->
-    <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col z-20 shadow-2xl">
-        <div class="p-6 border-b border-slate-800 flex items-center space-x-3">
-            <div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg">Dashboard de Performance (IFRS 9)</h1>
+                    <p class="text-xs text-slate-400" id="dash-subtitle">Resultados da Pipeline OOF</p>
+                </div>
             </div>
-            <h1 class="font-bold text-lg text-white">Model Audit</h1>
-        </div>
-        <nav class="flex-1 py-6 space-y-2 px-4">
-            <a href="#" onclick="switchTab('global')" id="nav-global" class="flex items-center space-x-3 px-4 py-3 bg-blue-600 text-white rounded-lg transition-colors">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
-                <span class="font-medium">Performance Global</span>
-            </a>
-            <a href="#" onclick="switchTab('shap')" id="nav-shap" class="flex items-center space-x-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-                <span class="font-medium">Feature Importance</span>
-            </a>
-            <!-- NOVA ABA AQUI -->
-            <a href="#" onclick="switchTab('hl')" id="nav-hl" class="flex items-center space-x-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-                <span class="font-medium">Calibração (H-L)</span>
-            </a>
-            <a href="#" onclick="switchTab('backtest')" id="nav-backtest" class="flex items-center space-x-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                <span class="font-medium">Backtesting (OOT)</span>
-            </a>
-        </nav>
-        <div class="p-6 border-t border-slate-800">
-            <div class="bg-slate-800 p-4 rounded-lg text-xs">
-                <p class="text-slate-400 mb-1">Última Execução:</p>
-                <p class="text-green-400 font-mono font-bold" id="last-run-time">Carregando...</p>
+            <div class="flex items-center space-x-4">
+                <span class="px-3 py-1 bg-green-500/20 text-green-400 text-xs font-bold rounded-full border border-green-500/30">
+                    Sincronizado (Metrics Store)
+                </span>
+                <a href="index.html" class="text-sm text-slate-300 hover:text-white transition-colors flex items-center space-x-1">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    <span>Voltar ao Configurador</span>
+                </a>
             </div>
-            <!-- BOTAO DE VOLTAR PARA A CONFIGURAÇÃO -->
-            <a href="config_ui.html" class="mt-4 w-full flex items-center justify-center space-x-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded transition-colors">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                <span>Voltar ao Dataflow</span>
-            </a>
         </div>
-    </aside>
+    </header>
 
-    <!-- Main Content -->
-    <main class="flex-1 overflow-y-auto bg-slate-50 p-8 relative">
+    <main class="max-w-7xl mx-auto px-6 py-8 space-y-6">
         
-        <div class="flex justify-between items-end mb-6">
-            <div>
-                <h2 class="text-3xl font-bold text-slate-800" id="page-title">Painel de Auditoria de Risco</h2>
-                <p class="text-slate-500 mt-1" id="page-subtitle">Métricas calculadas sobre a base de Validação.</p>
+        <div class="grid grid-cols-4 gap-6">
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+                <span class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Estatística KS</span>
+                <div class="flex items-baseline space-x-2">
+                    <span class="text-3xl font-black text-blue-600" id="kpi-ks">--</span>
+                    <span class="text-sm text-green-500 font-medium">Excelente</span>
+                </div>
             </div>
-            <button onclick="fetchMetrics()" class="px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 text-sm font-semibold rounded shadow-sm flex items-center space-x-2 transition-colors" id="btn-sync">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
-                <span>Sincronizar Métricas</span>
-            </button>
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+                <span class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">ROC AUC</span>
+                <div class="flex items-baseline space-x-2">
+                    <span class="text-3xl font-black text-slate-800" id="kpi-auc">--</span>
+                    <span class="text-sm text-slate-400 font-medium">Gini: <span id="kpi-gini">--</span></span>
+                </div>
+            </div>
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+                <span class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">F1-Score (OOF)</span>
+                <div class="flex items-baseline space-x-2">
+                    <span class="text-3xl font-black text-slate-800" id="kpi-f1">--</span>
+                </div>
+            </div>
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center relative overflow-hidden">
+                <div class="absolute right-0 top-0 w-16 h-16 bg-red-100 rounded-bl-full z-0"></div>
+                <span class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1 relative z-10">Impacto Financeiro Estimado</span>
+                <div class="flex items-baseline space-x-2 relative z-10">
+                    <span class="text-2xl font-black text-red-600" id="kpi-saved">--</span>
+                </div>
+            </div>
         </div>
 
-        <!-- TAB 1: PERFORMANCE GLOBAL -->
-        <div id="tab-global" class="max-w-6xl mx-auto space-y-6 block">
-            <div class="grid grid-cols-4 gap-4">
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-blue-500">
-                    <p class="text-xs font-semibold text-slate-500 uppercase">KS Statistic</p>
-                    <h3 class="text-3xl font-bold text-slate-800 mt-1" id="kpi-ks">--%</h3>
-                    <p class="text-xs text-green-600 mt-2 font-medium">Separação de Risco</p>
-                </div>
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-indigo-500">
-                    <p class="text-xs font-semibold text-slate-500 uppercase">ROC AUC</p>
-                    <h3 class="text-3xl font-bold text-slate-800 mt-1" id="kpi-auc">--</h3>
-                    <p class="text-xs text-slate-500 mt-2">Poder de discriminação global</p>
-                </div>
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-purple-500">
-                    <p class="text-xs font-semibold text-slate-500 uppercase">F1-Score (Fraude)</p>
-                    <h3 class="text-3xl font-bold text-slate-800 mt-1" id="kpi-f1">--</h3>
-                    <p class="text-xs text-slate-500 mt-2">Equilíbrio comercial</p>
-                </div>
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-green-500">
-                    <p class="text-xs font-semibold text-slate-500 uppercase">Falsos Positivos Evitados</p>
-                    <h3 class="text-3xl font-bold text-green-600 mt-1" id="kpi-saved">--</h3>
-                    <p class="text-xs text-slate-500 mt-2">Bons clientes aprovados</p>
+        <div class="grid grid-cols-3 gap-6">
+            <div class="col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="font-bold text-slate-800 mb-4 border-b pb-2">Curva ROC (Receiver Operating Characteristic)</h2>
+                <div class="h-72 w-full relative">
+                    <canvas id="chartROC"></canvas>
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-6">
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 class="font-semibold text-slate-800 border-b pb-3 mb-4">Curva ROC</h3>
-                    <div class="flex-1 relative min-h-[300px]">
-                        <canvas id="rocChart"></canvas>
+            <div class="col-span-1 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                <h2 class="font-bold text-slate-800 mb-4 border-b pb-2">Matriz de Confusão</h2>
+                <div class="flex-1 grid grid-cols-2 grid-rows-2 gap-2">
+                    <div class="matrix-box bg-green-50 border border-green-200">
+                        <span class="text-[10px] font-bold text-green-700 uppercase mb-1">Verdadeiro Neg (TN)</span>
+                        <span class="text-xl font-black text-green-800" id="cm-tn">--</span>
                     </div>
-                </div>
-
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <div class="flex justify-between items-center border-b pb-3 mb-4">
-                        <h3 class="font-semibold text-slate-800">Matriz de Confusão Comercial</h3>
-                        <span class="text-xs bg-slate-100 px-2 py-1 rounded text-slate-600 border">Cut-off de Negócio</span>
+                    <div class="matrix-box bg-red-50 border border-red-200">
+                        <span class="text-[10px] font-bold text-red-700 uppercase mb-1">Falso Pos (FP)</span>
+                        <span class="text-xl font-black text-red-800" id="cm-fp">--</span>
                     </div>
-                    
-                    <div class="flex-1 flex items-center justify-center bg-slate-50 rounded-lg p-4">
-                        <div class="grid grid-cols-3 gap-2 w-full text-center text-sm">
-                            <div></div>
-                            <div class="font-semibold text-slate-600">Aprovado (0)</div>
-                            <div class="font-semibold text-slate-600">Negado (1)</div>
-                            
-                            <div class="font-semibold text-slate-600 flex items-center justify-end pr-4">Bom (0)</div>
-                            <div class="bg-blue-100 text-blue-900 border border-blue-200 p-4 rounded-lg flex flex-col justify-center shadow-inner">
-                                <span class="text-xs opacity-70 mb-1">Verdadeiro Negativo</span>
-                                <span class="text-2xl font-bold" id="cm-tn">--</span>
-                            </div>
-                            <div class="bg-red-50 text-red-900 border border-red-100 p-4 rounded-lg flex flex-col justify-center shadow-inner">
-                                <span class="text-xs opacity-70 mb-1">Falso Positivo (Perda)</span>
-                                <span class="text-2xl font-bold text-red-600" id="cm-fp">--</span>
-                            </div>
-
-                            <div class="font-semibold text-slate-600 flex items-center justify-end pr-4">Mau (1)</div>
-                            <div class="bg-orange-50 text-orange-900 border border-orange-100 p-4 rounded-lg flex flex-col justify-center shadow-inner">
-                                <span class="text-xs opacity-70 mb-1">Falso Negativo (Calote)</span>
-                                <span class="text-2xl font-bold text-orange-600" id="cm-fn">--</span>
-                            </div>
-                            <div class="bg-purple-100 text-purple-900 border border-purple-200 p-4 rounded-lg flex flex-col justify-center shadow-inner">
-                                <span class="text-xs opacity-70 mb-1">Verdadeiro Positivo</span>
-                                <span class="text-2xl font-bold" id="cm-tp">--</span>
-                            </div>
-                        </div>
+                    <div class="matrix-box bg-yellow-50 border border-yellow-200">
+                        <span class="text-[10px] font-bold text-yellow-700 uppercase mb-1">Falso Neg (FN)</span>
+                        <span class="text-xl font-black text-yellow-800" id="cm-fn">--</span>
+                    </div>
+                    <div class="matrix-box bg-blue-50 border border-blue-200">
+                        <span class="text-[10px] font-bold text-blue-700 uppercase mb-1">Verdadeiro Pos (TP)</span>
+                        <span class="text-xl font-black text-blue-800" id="cm-tp">--</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- TAB 2: FEATURE IMPORTANCE -->
-        <div id="tab-shap" class="max-w-6xl mx-auto space-y-6 hidden">
-            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                <div class="mb-4">
-                    <h3 class="font-semibold text-slate-800 text-lg">SHAP / EBM Impact (Decomposição Global)</h3>
-                    <p class="text-sm text-slate-500">Avalia a contribuição marginal de cada variável para aumentar ou diminuir a probabilidade de calote.</p>
-                </div>
-                <div class="flex-1 relative min-h-[500px]">
-                    <canvas id="shapChart"></canvas>
+        <div class="grid grid-cols-3 gap-6">
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="font-bold text-slate-800 mb-4 border-b pb-2 text-sm">Feature Importance (SHAP)</h2>
+                <div class="h-64 w-full relative">
+                    <canvas id="chartFeature"></canvas>
                 </div>
             </div>
-        </div>
 
-        <!-- TAB 3: HOSMER-LEMESHOW -->
-        <div id="tab-hl" class="max-w-6xl mx-auto space-y-6 hidden">
-            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                <div class="mb-4 border-b pb-4">
-                    <h3 class="font-semibold text-slate-800 text-lg">Teste de Aderência Hosmer-Lemeshow (Traffic Light)</h3>
-                    <p class="text-sm text-slate-500">Validação regulatória de probabilidade de default vs realidade, dividida em 10 decis.</p>
-                </div>
-                <div class="overflow-x-auto rounded-lg border border-slate-200">
-                    <table class="w-full text-left border-collapse hl-table">
-                        <thead>
-                            <tr>
-                                <th>Decil (Faixa)</th>
-                                <th>Volume (N)</th>
-                                <th>PD Média Modelo</th>
-                                <th>Inadimplência Real</th>
-                                <th>Interv. Confiança (IC Min - Max)</th>
-                                <th>Status Regulaório</th>
-                            </tr>
-                        </thead>
-                        <tbody id="hl-table-body" class="bg-white">
-                            <!-- Preenchido via JS -->
-                        </tbody>
-                    </table>
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="font-bold text-slate-800 mb-4 border-b pb-2 text-sm">Calibração (PD Prevista vs Real)</h2>
+                <div class="h-64 w-full relative">
+                    <canvas id="chartCalibration"></canvas>
                 </div>
             </div>
-        </div>
 
-        <!-- TAB 4: BACKTESTING -->
-        <div id="tab-backtest" class="max-w-6xl mx-auto space-y-6 hidden">
-            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                <div class="mb-4">
-                    <h3 class="font-semibold text-slate-800 text-lg">Estabilidade do Modelo ao Longo do Tempo (OOT)</h3>
-                    <p class="text-sm text-slate-500">Monitoramento da degradação das métricas KS e AUC em safras simuladas (Concept Drift).</p>
-                </div>
-                <div class="flex-1 relative min-h-[400px]">
-                    <canvas id="backtestChart"></canvas>
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="font-bold text-slate-800 mb-4 border-b pb-2 text-sm">Backtest OOT (Validação)</h2>
+                <div class="h-64 w-full relative">
+                    <canvas id="chartBacktest"></canvas>
                 </div>
             </div>
         </div>
@@ -200,153 +126,129 @@
     </main>
 
     <script>
-        const API_URL = "https://ifrs9-financial-computer-ai.onrender.com/api";
+        const formatMoney = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
-        function switchTab(tab) {
-            document.getElementById('tab-global').style.display = tab === 'global' ? 'block' : 'none';
-            document.getElementById('tab-shap').style.display = tab === 'shap' ? 'block' : 'none';
-            document.getElementById('tab-hl').style.display = tab === 'hl' ? 'block' : 'none';
-            document.getElementById('tab-backtest').style.display = tab === 'backtest' ? 'block' : 'none';
-            
-            const aCls = 'flex items-center space-x-3 px-4 py-3 bg-blue-600 text-white rounded-lg transition-colors';
-            const iCls = 'flex items-center space-x-3 px-4 py-3 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors';
-            
-            document.getElementById('nav-global').className = tab === 'global' ? aCls : iCls;
-            document.getElementById('nav-shap').className = tab === 'shap' ? aCls : iCls;
-            document.getElementById('nav-hl').className = tab === 'hl' ? aCls : iCls;
-            document.getElementById('nav-backtest').className = tab === 'backtest' ? aCls : iCls;
+        Chart.defaults.font.family = 'Inter, sans-serif';
+        Chart.defaults.color = '#64748b';
 
-            const titles = {
-                'global': { title: 'Painel de Auditoria de Risco', sub: 'Métricas calculadas sobre a base de Validação.' },
-                'shap': { title: 'Explicabilidade do Modelo', sub: 'Decomposição de caixa-branca (Drivers de Risco).' },
-                'hl': { title: 'Calibração Regulatória', sub: 'Teste de consistência probabilística (Basileia / IFRS 9).' },
-                'backtest': { title: 'Validação Out-of-Time', sub: 'Testes de resiliência a choques em safras recentes.' }
-            };
-
-            document.getElementById('page-title').innerText = titles[tab].title;
-            document.getElementById('page-subtitle').innerText = titles[tab].sub;
-        }
-
-        let rocChartInst = null;
-        let shapChartInst = null;
-        let backtestChartInst = null;
-
-        function renderHLTable(hlData) {
-            const tbody = document.getElementById('hl-table-body');
-            tbody.innerHTML = '';
-            
-            if(!hlData || hlData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-500">Dados H-L não disponíveis nesta versão do JSON.</td></tr>';
-                return;
-            }
-
-            hlData.forEach(row => {
-                let statusClass = '';
-                if(row.status === 'VERDE') statusClass = 'status-verde';
-                else if(row.status === 'WARNING') statusClass = 'status-warning';
-                else statusClass = 'status-vermelho';
-
-                tbody.innerHTML += `
-                    <tr class="hover:bg-slate-50 transition-colors">
-                        <td class="font-semibold text-slate-800">Decil ${row.faixa}</td>
-                        <td class="font-mono text-slate-600">${row.n_clientes.toLocaleString()}</td>
-                        <td class="font-bold text-blue-600">${row.pd_modelo}%</td>
-                        <td class="font-bold text-slate-700">${row.pd_real}%</td>
-                        <td class="font-mono text-slate-500">[${row.ic_min}% &rarr; ${row.ic_max}%]</td>
-                        <td><span class="${statusClass}">${row.status}</span></td>
-                    </tr>
-                `;
-            });
-        }
-
-        function updateUI(data) {
-            document.getElementById('last-run-time').innerText = data.timestamp;
-            document.getElementById('kpi-ks').innerText = `${data.kpis.ks.toFixed(1)}%`;
-            document.getElementById('kpi-auc').innerText = data.kpis.auc.toFixed(3);
-            document.getElementById('kpi-f1').innerText = data.kpis.f1.toFixed(2);
-            document.getElementById('kpi-saved').innerText = `+${data.kpis.saved}`;
-            
-            document.getElementById('cm-tn').innerText = data.confusion_matrix.tn.toLocaleString();
-            document.getElementById('cm-fp').innerText = data.confusion_matrix.fp.toLocaleString();
-            document.getElementById('cm-fn').innerText = data.confusion_matrix.fn.toLocaleString();
-            document.getElementById('cm-tp').innerText = data.confusion_matrix.tp.toLocaleString();
-
-            renderHLTable(data.hosmer_lemeshow);
-
-            if(rocChartInst) rocChartInst.destroy();
-            const ctxRoc = document.getElementById('rocChart').getContext('2d');
-            rocChartInst = new Chart(ctxRoc, {
-                type: 'line',
-                data: {
-                    labels: data.roc_curve.fpr,
-                    datasets: [{
-                        label: 'Curva ROC', data: data.roc_curve.tpr,
-                        borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)', borderWidth: 3, fill: true, tension: 0.4, pointRadius: 0
-                    }, {
-                        label: 'Random', data: data.roc_curve.fpr,
-                        borderColor: '#cbd5e1', borderDash: [5, 5], borderWidth: 2, pointRadius: 0
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'linear', min: 0, max: 1 }, y: { min: 0, max: 1 } } }
-            });
-
-            if(shapChartInst) shapChartInst.destroy();
-            const ctxShap = document.getElementById('shapChart').getContext('2d');
-            shapChartInst = new Chart(ctxShap, {
-                type: 'bar',
-                data: {
-                    labels: data.feature_importance.features,
-                    datasets: [{
-                        label: 'Importância Média Relativa',
-                        data: data.feature_importance.scores,
-                        backgroundColor: '#f43f5e', borderRadius: 4
-                    }]
-                },
-                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false }
-            });
-
-            if(backtestChartInst) backtestChartInst.destroy();
-            const ctxBacktest = document.getElementById('backtestChart').getContext('2d');
-            backtestChartInst = new Chart(ctxBacktest, {
-                type: 'line',
-                data: {
-                    labels: data.backtest.cohorts,
-                    datasets: [
-                        { label: 'KS Statistic (%)', data: data.backtest.ks_trend, borderColor: '#3b82f6', backgroundColor: '#3b82f6', borderWidth: 3, tension: 0.3, yAxisID: 'y' },
-                        { label: 'ROC AUC', data: data.backtest.auc_trend, borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', borderWidth: 3, borderDash: [5, 5], tension: 0.3, yAxisID: 'y1' }
-                    ]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    scales: {
-                        y: { type: 'linear', position: 'left', min: 20, max: 80 },
-                        y1: { type: 'linear', position: 'right', min: 0.5, max: 1.0, grid: { drawOnChartArea: false } }
-                    }
-                }
-            });
-        }
-
-        async function fetchMetrics() {
-            const btn = document.getElementById('btn-sync');
-            const originalHTML = btn.innerHTML;
-            btn.innerHTML = '<span>A carregar...</span>';
-            
+        async function renderDashboard() {
             try {
-                const response = await fetch(`${API_URL}/metrics`);
-                if(response.ok) {
-                    const realData = await response.json();
-                    updateUI(realData);
-                    btn.innerHTML = `<span class="text-green-600 font-bold">✓ Sincronizado</span>`;
-                } else {
-                    btn.innerHTML = `<span class="text-red-600 font-bold">Erro: Sem métricas</span>`;
+                // Lê o arquivo JSON local
+                const response = await fetch('metrics.json');
+                
+                if (!response.ok) {
+                    throw new Error("Arquivo metrics.json não encontrado!");
                 }
-            } catch(error) {
-                btn.innerHTML = `<span class="text-red-600 font-bold">API Offline</span>`;
+                
+                const mockData = await response.json();
+
+                if(mockData.timestamp) {
+                    document.getElementById('dash-subtitle').innerText = `Atualizado em: ${mockData.timestamp}`;
+                }
+
+                // 1. KPIs
+                document.getElementById('kpi-ks').innerText = mockData.kpis.ks.toFixed(1) + '%';
+                document.getElementById('kpi-auc').innerText = mockData.kpis.auc.toFixed(3);
+                document.getElementById('kpi-gini').innerText = ((mockData.kpis.auc * 2) - 1).toFixed(3);
+                document.getElementById('kpi-f1').innerText = mockData.kpis.f1.toFixed(4);
+                document.getElementById('kpi-saved').innerText = formatMoney(mockData.kpis.saved);
+
+                // 2. Matriz de Confusão
+                document.getElementById('cm-tn').innerText = mockData.confusion_matrix.tn.toLocaleString('pt-BR');
+                document.getElementById('cm-fp').innerText = mockData.confusion_matrix.fp.toLocaleString('pt-BR');
+                document.getElementById('cm-fn').innerText = mockData.confusion_matrix.fn.toLocaleString('pt-BR');
+                document.getElementById('cm-tp').innerText = mockData.confusion_matrix.tp.toLocaleString('pt-BR');
+
+                // 3. Gráfico Curva ROC
+                const ctxROC = document.getElementById('chartROC').getContext('2d');
+                const rocData = mockData.roc_curve.fpr
+                    .map((x, i) => ({ x: x, y: mockData.roc_curve.tpr[i] }))
+                    .filter((_, i) => i % 20 === 0 || i === mockData.roc_curve.fpr.length - 1);
+                
+                new Chart(ctxROC, {
+                    type: 'line',
+                    data: {
+                        datasets: [
+                            { label: 'Modelo OOF', data: rocData, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', borderWidth: 3, fill: true, tension: 0.4, pointRadius: 0 },
+                            { label: 'Aleatório', data: [{x: 0, y: 0}, {x: 1, y: 1}], borderColor: '#94a3b8', borderDash: [5, 5], borderWidth: 2, pointRadius: 0 }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: { type: 'linear', position: 'bottom', title: { display: true, text: 'False Positive Rate' }, min: 0, max: 1 },
+                            y: { title: { display: true, text: 'True Positive Rate' }, min: 0, max: 1 }
+                        },
+                        plugins: { legend: { position: 'bottom' } }
+                    }
+                });
+
+                // 4. Feature Importance
+                const ctxFeature = document.getElementById('chartFeature').getContext('2d');
+                new Chart(ctxFeature, {
+                    type: 'bar',
+                    data: {
+                        labels: mockData.feature_importance.features,
+                        datasets: [{
+                            label: 'Importância Relativa',
+                            data: mockData.feature_importance.scores,
+                            backgroundColor: '#3b82f6',
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                        scales: { x: { display: false }, y: { grid: { display: false }, ticks: { font: { size: 10 } } } },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+
+                // 5. Calibração (PD Prevista vs Real)
+                const ctxCalib = document.getElementById('chartCalibration').getContext('2d');
+                new Chart(ctxCalib, {
+                    type: 'line',
+                    data: {
+                        labels: mockData.calibration.buckets,
+                        datasets: [
+                            { label: 'PD Real', data: mockData.calibration.observed_pd, borderColor: '#ef4444', backgroundColor: '#ef4444', borderWidth: 2 },
+                            { label: 'PD Modelo', data: mockData.calibration.expected_pd, borderColor: '#64748b', borderDash: [5, 5], borderWidth: 2, pointRadius: 0 }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: true, title: { display: true, text: 'Probabilidade', font: { size: 10 } } } },
+                        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }
+                    }
+                });
+
+                // 6. Backtest Trend
+                const ctxBacktest = document.getElementById('chartBacktest').getContext('2d');
+                new Chart(ctxBacktest, {
+                    type: 'line',
+                    data: {
+                        labels: mockData.backtest.cohorts,
+                        datasets: [
+                            { label: 'KS Score', data: mockData.backtest.ks_trend, borderColor: '#10b981', backgroundColor: '#10b981', borderWidth: 2, yAxisID: 'y' },
+                            { label: 'ROC AUC', data: mockData.backtest.auc_trend, borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderWidth: 2, yAxisID: 'y1' }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            y: { type: 'linear', display: true, position: 'left', title: { display: false }, ticks: { font: { size: 10 } } },
+                            y1: { type: 'linear', display: true, position: 'right', title: { display: false }, min: 0.5, max: 1.0, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } }
+                        },
+                        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }
+                    }
+                });
+
+            } catch (error) {
+                console.error(error);
+                alert("Erro ao carregar os dados do modelo. Verifique se o arquivo metrics.json está na mesma pasta do dashboard.");
             }
-            setTimeout(() => btn.innerHTML = originalHTML, 3000);
         }
 
-        window.onload = fetchMetrics;
+        renderDashboard();
     </script>
 </body>
 </html>
