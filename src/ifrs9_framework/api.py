@@ -33,7 +33,7 @@ if os.path.exists(UI_DIR):
 
 @app.get("/")
 async def root():
-    return RedirectResponse(url="/ui/config_ui.html")
+    return RedirectResponse(url="/ui/index.html")
 
 class PipelineConfig(BaseModel):
     pipeline_name: Optional[str] = "ifrs9_credit_origination"
