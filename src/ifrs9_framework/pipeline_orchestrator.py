@@ -186,21 +186,23 @@ class CreditRiskPipeline:
     def step_4_evaluation_and_audit(self):
         node = "step_4"
         try:
-            self.tracker.update_node(node, "running", "Iniciando Calibração OOF e Relatórios IFRS 9...")
+            self.tracker.update_node(node, "running", "Iniciando Calibração OOF e Relatórios de Auditoria IFRS 9...")
             
+            # 1. Calibração Out-Of-Fold (Isotonic/Spline) e Otimização de Threshold
+            self.tracker.update_node(node, "running", "Treinando Calibrador via K-Fold...")
             calibrator, resultado_otimo, f1_h, y_prob_test_final, y_pred_test = optimization_threshold(
                 config=self.config,
                 model_final=self.model_final,
                 X_train_val_processed=self.data_dict['X_train_val_processed'],
                 y_train_val=self.data_dict['y_train_val'],
-                groups_train_val=self.data_dict['groups_train'],
+                groups_train_val=self.data_dict['groups_train_val'], # <--- CORRIGIDO AQUI
                 melhores_params=self.melhores_params,
                 X_test_processed=self.data_dict['X_test_processed'],
                 y_test=self.data_dict['y_test'],
                 cat_indices=self.data_dict['cat_indices'],
                 preprocessor=self.data_dict['preprocessor'],
-                sample=True,
-                method='isotonic'
+                sample=True, # Liga o K-Fold
+                method='isotonic' # Calibrador escolhido
             )
             
             t_otimo = resultado_otimo['threshold']
@@ -220,6 +222,7 @@ class CreditRiskPipeline:
             executar_teste_aderencia_buckets(y_test, y_prob_test_final, n_bins=10)
             plotar_feature_importance(self.model_final, self.data_dict['feature_names'], self.data_dict['X_test_processed'], self.config, out_dir)
             
+            # 5. Exportar CSV e Pipeline .joblib
             metrics = {
                 'AUC': auc, 'KS': ks_stat, 'F1': f1_h, 'Precision': prec, 'Recall': rec, 'Brier': brier,
                 'Metodo_Calibracao': 'isotonic', 'Data': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -228,16 +231,24 @@ class CreditRiskPipeline:
             salvar_metricas_csv(self.config, metrics)
             
             salvar_pipeline_completo(
-                config=self.config,
-                preprocessor=self.data_dict['preprocessor'],
-                model=self.model_final,
-                threshold=t_otimo,
-                feature_names=self.data_dict['feature_names'],
-                cat_indices=self.data_dict['cat_indices'],
-                scale_pos_weight=self.melhores_params.get('w_train_calculado', 1.0),
-                isotonic_model=calibrator,
+                config=self.config, preprocessor=self.data_dict['preprocessor'], model=self.model_final,
+                threshold=t_otimo, feature_names=self.data_dict['feature_names'], cat_indices=self.data_dict['cat_indices'],
+                scale_pos_weight=self.melhores_params.get('w_train_calculado', 1.0), isotonic_model=calibrator,
                 nome_arquivo="pipeline_modelagem_rede_v1.joblib"
             )
+
+            # ---> INÍCIO DA NOVA INJEÇÃO JSON PARA A UI <---
+            from visualization.model_dashboard import MetricsGenerator
+            
+            metrics_path = os.path.join(self.base_dir, "config", "metrics.json")
+            generator = MetricsGenerator(
+                model=self.model_final,
+                X_test=self.data_dict['X_test_processed'],
+                y_test=self.data_dict['y_test'],
+                cutoff=t_otimo
+            )
+            generator.generate_metrics(metrics_path)
+            # ---> FIM DA NOVA INJEÇÃO <---
             
             self.tracker.update_node(node, "success", "Auditoria IFRS 9 e Empacotamento Concluídos!")
         except Exception as e:

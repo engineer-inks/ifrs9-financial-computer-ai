@@ -108,7 +108,8 @@ def preparar_matrizes(df_train_val, df_test, config, preprocessor_func, tracker=
         'X_val_processed': X_val_processed, 'y_val': y_val,
         'X_test_processed': X_test_processed, 'y_test': y_test,
         'X_train_val_processed': X_train_val_processed, 'y_train_val': y_train_val,
-        'groups_train': groups_train, 'groups_val': groups_val
+        'groups_train': groups_train, 'groups_val': groups_val,
+        'groups_train_val': groups_train_val # <--- ADICIONAMOS A LISTA COMPLETA AQUI
     }
 
 def search_hyperparameters_and_training_model(config, data_dict, tuner_func, get_focal_loss_obj_func, recalibrar_func, sample_base=True, search_method='grid', metodo=None, tracker=None):
@@ -155,7 +156,7 @@ def search_hyperparameters_and_training_model(config, data_dict, tuner_func, get
     if 'peso_efetivo' in final_params:
         w_train_real = final_params.pop('peso_efetivo')
         
-    for key in ['logging_level', 'verbose', 'alpha', 'gamma', 'peso_efetivo', 'loss_function', 'eval_metric', 'iterations']:
+    for key in ['logging_level', 'verbose', 'alpha', 'gamma', 'peso_efetivo', 'loss_function', 'eval_metric', 'iterations', 'w_train_calculado', 'metodo']:
         final_params.pop(key, None)
         
     loss_fn = 'Logloss'

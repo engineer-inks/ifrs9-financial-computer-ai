@@ -11,7 +11,7 @@ group_column: codigo_contrato
 hyperparameters:
   interactions:
   - 0
-  - 50
+  - 10
   learning_rate:
   - 0.001
   - 0.3
@@ -21,7 +21,7 @@ hyperparameters:
   scale_pos_weight:
   - 1
   - 50
-loss_function: focal
+loss_function: logloss
 numeric_features:
 - cliente_id
 - idade

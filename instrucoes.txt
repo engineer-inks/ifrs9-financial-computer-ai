@@ -41,3 +41,8 @@ http://localhost:8000/ui/vertex_pipeline.html
 
 docker exec -it ifrs9-dev-env pip install interpret lightgbm
 docker logs ifrs9-dev-env
+
+
+devolução do email (na query) requisição fazer por email (entrega o depositante e entregue o email)
+concetar com o canvas
+Adicionar grafico na resposta do gemini (whats e no portal)

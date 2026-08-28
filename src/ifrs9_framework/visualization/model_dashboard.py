@@ -10,10 +10,6 @@ import logging
 logger = logging.getLogger("MLOps-Auditoria")
 
 class MetricsGenerator:
-    """
-    Motor analítico que avalia o modelo recém-treinado, aplica explicabilidade (SHAP)
-    e gera o ficheiro JSON consumido pelo Painel Web.
-    """
     def __init__(self, model, X_test, y_test, df_test_completo=None, cutoff=0.04):
         self.model = model
         self.X_test = X_test
@@ -24,40 +20,78 @@ class MetricsGenerator:
     def generate_metrics(self, output_path):
         logger.info("A iniciar cálculos de auditoria de risco...")
         
-        # 1. Previsões e Probabilidades
         preds_proba = self.model.predict_proba(self.X_test)[:, 1]
         preds_class = (preds_proba > self.cutoff).astype(int)
 
-        # 2. ROC e AUC
         fpr, tpr, _ = roc_curve(self.y_test, preds_proba)
         roc_auc = auc(fpr, tpr)
-
-        # 3. Estatística KS
         ks_stat = np.max(tpr - fpr) * 100
-
-        # 4. Matriz de Confusão e F1-Score
         tn, fp, fn, tp = confusion_matrix(self.y_test, preds_class).ravel()
         f1 = f1_score(self.y_test, preds_class)
 
-        # 5. SHAP (Feature Importance de Caixa-Branca)
-        logger.info("A calcular SHAP values (Isto pode demorar alguns segundos)...")
-        explainer = shap.TreeExplainer(self.model)
-        # Usamos uma amostra se a base for muito grande para não travar o servidor
-        amostra_shap = self.X_test.sample(min(10000, len(self.X_test)), random_state=42)
-        shap_values = explainer.shap_values(amostra_shap)
-        
-        # Média absoluta do impacto de cada variável
-        shap_abs = np.abs(shap_values).mean(axis=0)
-        feature_importance = pd.DataFrame({
-            'feature': self.X_test.columns,
-            'importance': shap_abs
-        }).sort_values('importance', ascending=False).head(10) # Top 10
+        # === EXPLICABILIDADE ===
+        if type(self.model).__name__ == 'ExplainableBoostingClassifier':
+            ebm_global = self.model.explain_global()
+            data = ebm_global.data() 
+            feature_importance = pd.DataFrame({
+                'feature': data['names'],
+                'importance': data['scores']
+            }).sort_values('importance', ascending=False).head(10)
+        else:
+            explainer = shap.TreeExplainer(self.model)
+            amostra_shap = self.X_test.sample(min(10000, len(self.X_test)), random_state=42)
+            shap_values = explainer.shap_values(amostra_shap)
+            if isinstance(shap_values, list): shap_values = shap_values[1]
+            shap_abs = np.abs(shap_values).mean(axis=0)
+            feature_importance = pd.DataFrame({
+                'feature': self.X_test.columns,
+                'importance': shap_abs
+            }).sort_values('importance', ascending=False).head(10)
 
-        # 6. Backtesting OOT (Simulação de Safras)
-        cohorts, ks_trend, auc_trend = [], [], []
+        # === TESTE DE HOSMER-LEMESHOW (TRAFFIC LIGHT) ===
+        df_calib = pd.DataFrame({'y_true': self.y_test, 'y_prob': preds_proba})
+        try:
+            df_calib['bucket'] = pd.qcut(df_calib['y_prob'], q=10, duplicates='drop')
+        except:
+            df_calib['bucket'] = pd.cut(df_calib['y_prob'], bins=10)
+            
+        stats = df_calib.groupby('bucket', observed=False).agg(
+            N=('y_true', 'count'),
+            Observed_Def=('y_true', 'sum'),
+            Prob_Mean=('y_prob', 'mean')
+        ).reset_index()
         
-        # Simulamos a divisão em safras quebrando a base de teste em 6 blocos cronológicos
-        # (Assumindo que a base de teste já está ordenada cronologicamente)
+        stats['Observed_Rate'] = stats['Observed_Def'] / stats['N']
+        z_score = 1.96
+        p = stats['Prob_Mean']
+        erro_padrao = z_score * np.sqrt((p * (1 - p)) / stats['N'].replace(0,1))
+        stats['IC_Lower'] = (p - erro_padrao).clip(lower=0)
+        stats['IC_Upper'] = (p + erro_padrao).clip(upper=1)
+        
+        hl_table = []
+        for i, row in stats.iterrows():
+            real = row['Observed_Rate']
+            ic_min, ic_max, prob_mean = row['IC_Lower'], row['IC_Upper'], row['Prob_Mean']
+            
+            if ic_min <= real <= ic_max:
+                status = "VERDE"
+            elif abs(real - prob_mean) < 0.05 * prob_mean:
+                status = "WARNING"
+            else:
+                status = "VERMELHO"
+                
+            hl_table.append({
+                "faixa": i + 1,
+                "n_clientes": int(row['N']),
+                "pd_modelo": round(float(prob_mean) * 100, 2),
+                "pd_real": round(float(real) * 100, 2),
+                "ic_min": round(float(ic_min) * 100, 2),
+                "ic_max": round(float(ic_max) * 100, 2),
+                "status": status
+            })
+
+        # === BACKTESTING OOT ===
+        cohorts, ks_trend, auc_trend = [], [], []
         blocos = np.array_split(range(len(self.y_test)), 6)
         meses_mock = ["Mês 1", "Mês 2", "Mês 3", "Mês 4", "Mês 5", "Mês 6"]
         
@@ -65,47 +99,26 @@ class MetricsGenerator:
             if len(idx_array) > 0:
                 y_true_bloco = self.y_test.iloc[idx_array]
                 y_prob_bloco = preds_proba[idx_array]
-                
-                # Só calcula se houver caloteiros no bloco (para evitar erro de divisão)
                 if len(np.unique(y_true_bloco)) > 1:
                     f, t, _ = roc_curve(y_true_bloco, y_prob_bloco)
                     cohorts.append(meses_mock[i])
                     auc_trend.append(float(auc(f, t)))
                     ks_trend.append(float(np.max(t - f) * 100))
 
-        # 7. Montando o Pacote JSON
         logger.info("A empacotar métricas para o Dashboard Web...")
         metrics_dict = {
             "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             "kpis": {
-                "ks": float(ks_stat),
-                "auc": float(roc_auc),
-                "f1": float(f1),
-                "saved": int(13151 - fp) # Quantos bons clientes salvámos em relação ao modelo original ruim
+                "ks": float(ks_stat), "auc": float(roc_auc), "f1": float(f1),
+                "saved": int(13151 - fp) if fp < 13151 else 0
             },
-            "confusion_matrix": {
-                "tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)
-            },
-            "roc_curve": {
-                # Fazemos um slice [::5] para reduzir o tamanho do ficheiro (otimização web)
-                "fpr": fpr[::5].tolist(), 
-                "tpr": tpr[::5].tolist()
-            },
-            "feature_importance": {
-                "features": feature_importance['feature'].tolist(),
-                "scores": feature_importance['importance'].tolist()
-            },
-            "backtest": {
-                "cohorts": cohorts,
-                "ks_trend": ks_trend,
-                "auc_trend": auc_trend
-            }
+            "confusion_matrix": {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)},
+            "roc_curve": {"fpr": fpr[::5].tolist(), "tpr": tpr[::5].tolist()},
+            "feature_importance": {"features": feature_importance['feature'].tolist(), "scores": feature_importance['importance'].tolist()},
+            "backtest": {"cohorts": cohorts, "ks_trend": ks_trend, "auc_trend": auc_trend},
+            "hosmer_lemeshow": hl_table
         }
 
-        # Guardar no disco
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        with open(output_path, 'w') as f:
-            json.dump(metrics_dict, f)
-            
-        logger.info(f"Métricas gravadas com sucesso em: {output_path}")
+        with open(output_path, 'w') as f: json.dump(metrics_dict, f)
         return metrics_dict
