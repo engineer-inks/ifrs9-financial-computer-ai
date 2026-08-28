@@ -75,4 +75,6 @@ Metrics Store: Os relatórios de performance final (incluindo curvas ROC, import
 [ ] Expansão dos testes de estresse para validação cruzada Out-of-Time (OOT).
 
 ✒️ Autor
+Eneas R. S. Junior
+Eng. Machine Learning & Data Science
 Desenvolvido com foco em Engenharia de Dados, Machine Learning e Arquitetura MLOps.
