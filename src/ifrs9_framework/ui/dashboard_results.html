@@ -122,7 +122,25 @@
                 </div>
             </div>
         </div>
-
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mt-6">
+            <h2 class="font-bold text-slate-800 mb-4 border-b pb-2 text-sm">Teste de Aderência Hosmer-Lemeshow (Traffic Light)</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left text-slate-500">
+                    <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3">Decil (Faixa)</th>
+                            <th scope="col" class="px-6 py-3">Volume (N)</th>
+                            <th scope="col" class="px-6 py-3">PD Modelo (Esperada)</th>
+                            <th scope="col" class="px-6 py-3">PD Real (Observada)</th>
+                            <th scope="col" class="px-6 py-3">Desvio Relativo</th>
+                            <th scope="col" class="px-6 py-3">Status IFRS 9</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-hl-body">
+                        </tbody>
+                </table>
+            </div>
+        </div>
     </main>
 
     <script>
