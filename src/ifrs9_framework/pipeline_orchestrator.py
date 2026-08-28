@@ -121,15 +121,39 @@ class CreditRiskPipeline:
         node = "step_1"
         try:
             self.tracker.update_node(node, "running", "Iniciando Ingestão de Dados...")
-            if not MODULES_LOADED:
+            if MODULES_LOADED:
+                # ==========================================
+                # LINHA ORIGINAL (COMENTADA PARA USO COMPLETO FUTURO)
+                # self.df = load_and_filter_data(self.config, logger)
+                # ==========================================
+                
+                # CARREGA OS DADOS ORIGINAIS
+                df_full = load_and_filter_data(self.config, logger)
+                
+                # --- AMOSTRAGEM ESTRATIFICADA PARA O RENDER (CLOUD FREE TIER) ---
+                target_col = self.config.get('target_column', 'default_flag')
+                if target_col in df_full.columns and len(df_full) > 3000:
+                    logger.info("Aplicando Amostragem Estratificada para otimização de RAM na nuvem...")
+                    from sklearn.model_selection import train_test_split
+                    
+                    # Amostra estratificada mantendo a proporção exata de defaults (ex: ~3000 linhas)
+                    self.df, _ = train_test_split(
+                        df_full, 
+                        train_size=3000, 
+                        random_state=self.config.get('random_state', 42), 
+                        stratify=df_full[target_col]
+                    )
+                    logger.info(f"Base reduzida via estratificação de {len(df_full):,} para {len(self.df):,} linhas.")
+                else:
+                    self.df = df_full
+            else:
                 raise ImportError(f"Falha ao carregar motores modulares: {ERRO_IMPORT}")
 
-            self.df = load_and_filter_data(self.config, logger)
             group_col = self.config.get('group_column', 'codigo_contrato')
             if group_col not in self.df.columns:
                 self.df[group_col] = [f"CTR_{i}" for i in range(len(self.df))]
                 
-            self.tracker.update_node(node, "success", f"Ingestão concluída. Total: {len(self.df):,} linhas.")
+            self.tracker.update_node(node, "success", f"Ingestão concluída. Amostra Ativa: {len(self.df):,} linhas.")
         except Exception as e:
             err_msg = f"CRASH NO STEP 1: {str(e)}\n{traceback.format_exc()}"
             logger.error(err_msg)
